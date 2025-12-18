@@ -1,14 +1,6 @@
 (() => {
   "use strict";
 
-
-  // -------------------------------------------------------
-  // Version / Build (sichtbar, damit Updates sicher geprüft werden können)
-  // -------------------------------------------------------
-  const APP_NAME = "Zaunteam Zaunplaner";
-  const APP_VERSION = "1.4.11";
-  const APP_BUILD = "2025-12-18"; // Berlin-Zeit (Build-Datum)
-
   // --- Airbag: zeigt JS-Fehler sofort im Toast (damit Tabs/Dropdowns nicht "still" sterben)
   window.addEventListener("error", (e)=>{
     try{
@@ -68,29 +60,7 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-  let state = { version:APP_VERSION, selectedProjectId:null, projects:[] };
-
-  function ensureVersionPill(){
-    const host = el("statusPill");
-    if(!host || !host.parentElement) return;
-    let vp = document.getElementById("versionPill");
-    if(!vp){
-      vp = document.createElement("span");
-      vp.id = "versionPill";
-      vp.className = "pill";
-      vp.style.marginRight = "8px";
-      host.parentElement.insertBefore(vp, host);
-    }
-    vp.textContent = `v${APP_VERSION}`;
-    vp.title = `${APP_NAME} • Build: ${APP_BUILD}`;
-    try{
-      if(document && document.title && document.title.indexOf("v"+APP_VERSION) === -1){
-        document.title = `${APP_NAME} v${APP_VERSION}`;
-      }
-    }catch(_){}
-  }
-
-
+  let state = { version:"1.4.12", selectedProjectId:null, projects:[] };
 
   function blankProject(name) {
     return {
@@ -122,7 +92,7 @@
     if(stable) {
       try {
         const s = JSON.parse(stable);
-        if(s && Array.isArray(s.projects)) { state = {...state, ...s, version:APP_VERSION}; return; }
+        if(s && Array.isArray(s.projects)) { state = {...state, ...s, version:"1.4.12"}; return; }
       } catch(e){}
     }
     for(const k of LEGACY_KEYS) {
@@ -187,9 +157,13 @@
   }
 
   function updateStatusPill() {
-    ensureVersionPill();
     const p = currentProject();
     el("statusPill").textContent = p ? (`aktiv: ${p.title} • ${p.status}`) : "kein Projekt";
+    const vp = el("verPill");
+    if(vp) {
+      vp.textContent = "v" + (state && state.version ? state.version : "—");
+      vp.title = "Zaunplaner Version";
+    }
   }
 
   // Tabs
@@ -639,6 +613,150 @@ ${p.title}`)) return;
     }catch(_){ return false; }
   }
 
+
+  // -------------------------------------------------------
+  // Fotos: ZIP-Download (Desktop-Fallback)
+  // - WhatsApp Desktop/Web erlaubt Anhänge nicht per Link -> wir liefern ein Fotos.zip
+  // -------------------------------------------------------
+  const _crcTable = (()=> {
+    const t = new Uint32Array(256);
+    for (let i=0;i<256;i++){
+      let c=i;
+      for (let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1);
+      t[i]=c>>>0;
+    }
+    return t;
+  })();
+  function crc32(u8){
+    let c = 0xFFFFFFFF;
+    for(let i=0;i<u8.length;i++){
+      c = _crcTable[(c ^ u8[i]) & 0xFF] ^ (c>>>8);
+    }
+    return (c ^ 0xFFFFFFFF)>>>0;
+  }
+  function u16(n){ const a=new Uint8Array(2); a[0]=n&255; a[1]=(n>>>8)&255; return a; }
+  function u32(n){ const a=new Uint8Array(4); a[0]=n&255; a[1]=(n>>>8)&255; a[2]=(n>>>16)&255; a[3]=(n>>>24)&255; return a; }
+  function concatU8(chunks){
+    let len=0; for(const c of chunks) len += c.length;
+    const out=new Uint8Array(len);
+    let off=0;
+    for(const c of chunks){ out.set(c, off); off += c.length; }
+    return out;
+  }
+  function encodeUtf8(s){ return new TextEncoder().encode(String(s||"")); }
+
+  function buildZipStore(files){
+    // files: [{name, dataU8, mtimeDate}]
+    const localParts=[];
+    const centralParts=[];
+    let offset=0;
+
+    const dtToDos = (d)=>{
+      const dt = d instanceof Date ? d : new Date();
+      const year = Math.max(1980, dt.getFullYear());
+      const month = dt.getMonth()+1;
+      const day = dt.getDate();
+      const hour = dt.getHours();
+      const min = dt.getMinutes();
+      const sec = Math.floor(dt.getSeconds()/2);
+      const dosTime = (hour<<11) | (min<<5) | sec;
+      const dosDate = ((year-1980)<<9) | (month<<5) | day;
+      return {dosTime, dosDate};
+    };
+
+    for(const f of files){
+      const name = encodeUtf8(f.name);
+      const data = f.dataU8;
+      const {dosTime, dosDate} = dtToDos(f.mtimeDate);
+      const crc = crc32(data);
+      const compSize = data.length;
+      const uncompSize = data.length;
+
+      // Local file header
+      // signature 0x04034b50
+      const lh = concatU8([
+        u32(0x04034b50),
+        u16(20),           // version needed
+        u16(0),            // flags
+        u16(0),            // compression (0=store)
+        u16(dosTime),
+        u16(dosDate),
+        u32(crc),
+        u32(compSize),
+        u32(uncompSize),
+        u16(name.length),
+        u16(0)             // extra len
+      ]);
+
+      localParts.push(lh, name, data);
+
+      // Central directory header
+      const ch = concatU8([
+        u32(0x02014b50),
+        u16(20),           // version made by
+        u16(20),           // version needed
+        u16(0),            // flags
+        u16(0),            // compression
+        u16(dosTime),
+        u16(dosDate),
+        u32(crc),
+        u32(compSize),
+        u32(uncompSize),
+        u16(name.length),
+        u16(0),            // extra len
+        u16(0),            // comment len
+        u16(0),            // disk start
+        u16(0),            // int attrs
+        u32(0),            // ext attrs
+        u32(offset)        // local header offset
+      ]);
+      centralParts.push(ch, name);
+
+      offset += lh.length + name.length + data.length;
+    }
+
+    const centralDir = concatU8(centralParts);
+    const localDir = concatU8(localParts);
+
+    const eocd = concatU8([
+      u32(0x06054b50),
+      u16(0), u16(0),
+      u16(files.length),
+      u16(files.length),
+      u32(centralDir.length),
+      u32(localDir.length),
+      u16(0)
+    ]);
+
+    return new Blob([localDir, centralDir, eocd], {type:"application/zip"});
+  }
+
+  async function downloadInternPhotosZip(p){
+    const ph = (p && p.chef && Array.isArray(p.chef.photos)) ? p.chef.photos : [];
+    if(!ph.length) return toast("Keine Fotos", "im Chef‑Tab gespeichert");
+    const files=[];
+    const max = Math.min(60, ph.length);
+    for(let i=0;i<max;i++){
+      const x = ph[i];
+      if(!x || !x.dataUrlSmall) continue;
+      const safeName = fileSafe(x.name || `Foto_${i+1}.jpg`);
+      const res = await fetch(x.dataUrlSmall);
+      const ab = await res.arrayBuffer();
+      files.push({name:safeName, dataU8:new Uint8Array(ab), mtimeDate:new Date()});
+    }
+    if(!files.length) return toast("Keine Fotos", "konnten gelesen werden");
+    const zipBlob = buildZipStore(files);
+    const url = URL.createObjectURL(zipBlob);
+    const a=document.createElement("a");
+    a.href=url;
+    a.download = fileSafe(`${(p && p.title) ? p.title : "Zaunplaner"}_Fotos.zip`);
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    setTimeout(()=>URL.revokeObjectURL(url), 1500);
+    toast("Download", "Fotos.zip erstellt");
+  }
+
   async function dataUrlToFile(dataUrl, filename, mime){
     const res = await fetch(dataUrl);
     const blob = await res.blob();
@@ -669,8 +787,15 @@ ${p.title}`)) return;
     }
     // 2) Desktop: WhatsApp Web mit Text öffnen (Fotos lassen sich dort nicht automatisch anhängen)
     if(openWhatsAppText(text)){
+      // Text kopieren, damit du ihn direkt in WhatsApp einfügen kannst
       try{ await navigator.clipboard.writeText(text); }catch(_){}
-      if(ph.length) toast("Hinweis", "Fotos können am Desktop nicht automatisch an WhatsApp angehängt werden. Backup.json enthält sie.");
+      // Fotos als ZIP bereitstellen (manuell in WhatsApp Desktop/Web anhängen)
+      if(ph.length){
+        try{ await downloadInternPhotosZip(p); }catch(_){}
+        toast("WhatsApp geöffnet", "Text kopiert + Fotos.zip geladen (bitte manuell anhängen)");
+      }else{
+        toast("WhatsApp geöffnet", "Text kopiert");
+      }
       return;
     }
     // 3) Fallback: Kopieren/Prompt
@@ -717,6 +842,15 @@ ${p.title}`)) return;
     try { window.location.href = href; }
     catch(e){ toast("Kann keine E‑Mail öffnen", String(e && e.message || e)); }
   }
+  function sendMailAny(subject="", body=""){
+    const q = [];
+    if(subject) q.push("subject="+encodeURIComponent(subject));
+    if(body) q.push("body="+encodeURIComponent(body));
+    const href = "mailto:" + (q.length?("?"+q.join("&")):"");
+    try { window.location.href = href; }
+    catch(e){ toast("Kann keine E‑Mail öffnen", String(e && e.message || e)); }
+  }
+
 
 
   el("btnKWhats").addEventListener("click", async ()=>{ const p=currentProject(); if(!p) return; await shareCustomerToWhatsApp(p); });
@@ -1237,9 +1371,26 @@ ${p.title}`)) return;
   el("btnCWhats").addEventListener("click", async ()=>{ const p=currentProject(); if(!p) return; await shareInternWithPhotos(p); });
   el("btnCDown").addEventListener("click", ()=>{ const p=currentProject(); if(!p) return; downloadText(chefWhatsText(p), fileSafe(`${p.title}_Intern.txt`)); });
 
+  // Intern: Fotos.zip (Desktop-Fallback) + E-Mail
+  if(el("btnCZip")){
+    el("btnCZip").addEventListener("click", async ()=>{
+      const p=currentProject(); if(!p) return;
+      await downloadInternPhotosZip(p);
+    });
+  }
+  if(el("btnCMail")){
+    el("btnCMail").addEventListener("click", async ()=>{
+      const p=currentProject(); if(!p) return;
+      const text = chefWhatsText(p);
+      try{ await navigator.clipboard.writeText(text); }catch(_){}
+      // Hinweis: Mail-Clients erlauben Anhänge nicht per Script -> Nutzer hängt Fotos.zip manuell an
+      sendMailAny(`Intern – ${p.title}`, text + "\n\n(Hinweis: Text wurde in die Zwischenablage kopiert. Bitte Fotos.zip manuell anhängen.)");
+    });
+  }
+
   // Backup
   el("btnBackup").addEventListener("click", ()=>{
-    const data={ exportedAt: nowISO(), tool:"Zaunteam Zaunplaner", version:APP_VERSION, state };
+    const data={ exportedAt: nowISO(), tool:"Zaunteam Zaunplaner", version:"1.4.12", state };
     downloadText(JSON.stringify(data,null,2), "Zaunplaner_Backup.json", "application/json");
   });
   el("btnCSV").addEventListener("click", ()=>{
@@ -1309,7 +1460,6 @@ ${p.title}`)) return;
   }
 
   // init
-  ensureVersionPill();
   fillHeights();
   fillSelect(kColor, ZAUNTEAM_FARBEN, "Anthrazit (RAL 7016)");
   fillSelect(kWood, HOLZARTEN, "—");
