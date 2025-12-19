@@ -60,9 +60,9 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.27";
+    const APP_VERSION = "1.4.28";
   const APP_BUILD = "2025-12-19";
-let state = { version:"1.4.27", selectedProjectId:null, projects:[] };
+let state = { version:"1.4.28", selectedProjectId:null, projects:[] };
 
   function blankProject(name) {
     return {
@@ -291,7 +291,8 @@ let state = { version:"1.4.27", selectedProjectId:null, projects:[] };
   }
 
 
-  el("btnDel").addEventListener("click", ()=>{
+  const btnDelMain = el("btnDel");
+  if(btnDelMain) btnDelMain.addEventListener("click", ()=>{
     const p=currentProject(); if(!p) return;
     if(!confirm(`Kunde wirklich löschen?
 

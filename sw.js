@@ -1,11 +1,11 @@
 /* Zaunplaner SW — Auto-Update + Safe Cache (keine Kundendaten löschen) */
-const CACHE_VERSION = "v1.4.27";
+const CACHE_VERSION = "v1.4.28";
 const CACHE_NAME = `zaunplaner-${CACHE_VERSION}`;
 
 const CORE = [
   "./",
   "./index.html",
-  "./app.js?v=1.4.27",
+  "./app.js?v=1.4.28",
   "./manifest.webmanifest",
   "./icon-192.png",
   "./icon-512.png"
