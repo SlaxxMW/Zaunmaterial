@@ -1,3 +1,4 @@
+let gateUiIdx=0; let gateCollapsed=false;
 (() => {
   "use strict";
 
@@ -60,7 +61,7 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.36";
+    const APP_VERSION = "1.4.38";
   const APP_BUILD = "2025-12-19";
 let state = { version:"1.4.33", selectedProjectId:null, projects:[], meta:{ lastSavedAt:"", lastBackupAt:"" } };
 
@@ -499,7 +500,7 @@ ${p.title}`)) return;
   const btnGateClear=el("btnGateClear");
 
 
-  function clampInt(v, lo=0, hi=99) {
+  function clampInt(v, lo=0, hi=9999) {
     const n=Math.trunc(Number(v));
     if(!Number.isFinite(n)) return lo;
     return Math.max(lo, Math.min(hi, n));
@@ -657,30 +658,25 @@ function validateProject(p){
     return false;
   }
 function computeTotals(c){
-    const segs = c && Array.isArray(c.segments) ? c.segments : null;
-    const hasSeg = segs && segs.some(s=>Math.max(0,toNum(s.length,0))>0);
-    const corners = clampInt(c && c.corners || 0);
+    const segs = Array.isArray(c.segments)? c.segments.filter(s=>toNum(s.length,0)>0) : [];
+    const segmentsActive = !!(c.useSegments && segs.length>0);
 
-    let lengthM = 0;
-    let panels = 0;
+    const totalLen = segmentsActive ? segs.reduce((a,s)=>a+toNum(s.length,0),0) : toNum(c.length,0);
+    const panels = totalLen>0 ? Math.ceil(totalLen / PANEL_W) : 0;
 
-    if(hasSeg){
-      for(const s of segs){
-        const len = Math.max(0,toNum(s.length,0));
-        if(!len) continue;
-        lengthM += len;
-        panels += Math.ceil(len / PANEL_W);
-      }
-    }else{
-      lengthM = Math.max(0,toNum(c && c.length,0));
-      panels = lengthM ? Math.ceil(lengthM / PANEL_W) : 0;
+    // Posts: contiguous fence => panels + 1 (wenn es überhaupt Panels gibt)
+    const posts = panels>0 ? (panels + 1) : 0;
+
+    let corners = 0;
+    if(segmentsActive){
+      corners = segs.reduce((a,s)=>a + clampInt(s.corners||0,0,999), 0);
+    } else {
+      corners = clampInt(c.corners||0,0,999);
     }
+    corners = clampInt(corners,0,posts);
 
-    const posts = panels ? (panels + 1) : 0; // zusammenhängende Linie
-    const cornerPosts = corners;
-    const postStrips = posts ? (posts + corners) : 0;
-
-    return {lengthM, panels, posts, cornerPosts, postStrips, hasSeg};
+    const postStrips = posts; // 1 Leiste pro Pfosten (inkl. Ecken)
+    return { totalLen, panels, posts, corners, postStrips };
   }
   function computePrivacyRolls(c, totals){
     try{
@@ -724,6 +720,18 @@ function computeTotals(c){
       return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
     }
   }
+
+  function computePrivacyForSegment(segLen, height, c){
+    const rollLen = (c.privacyRollLen && Number(c.privacyRollLen)===50) ? 50 : 35;
+    const panels = segLen ? Math.ceil(segLen / PANEL_W) : 0;
+    const h = Number(height)||160;
+    const stripsPerPanel = Math.max(0, Math.round(h/20)); // 100→5,120→6...
+    const strips = panels * stripsPerPanel;
+    const totalStripM = strips * PANEL_W;
+    const rolls = totalStripM ? Math.ceil(totalStripM / rollLen) : 0;
+    return {rolls, rollLen, stripsPerPanel, strips, stripH: stripsPerPanel, stripW: 250, totalStripM};
+  }
+
 
 
   function sysLabel(c){
@@ -1363,10 +1371,30 @@ function computeTotals(c){
     if(!active){ gateRows.innerHTML=""; return; }
 
     const n = gateLeafCount(c.gateType);
+    gateCollapsed = (localStorage.getItem("zaunplaner_gate_collapsed")==="1");
+    const countPill = `<div class="pill">Tore: <b>${c.gates.length||0}</b></div>`;
+    const selBox = (c.gates.length>1) ? `
+      <div class="row" style="margin-top:10px; align-items:end;">
+        <div style="flex:1">
+          <label>Tor auswählen</label>
+          <select id="gateSel" class="k"></select>
+        </div>
+        <div style="display:flex; gap:8px">
+          <button class="btn" type="button" id="btnGateToggle">${gateCollapsed ? "Liste anzeigen" : "Liste ausblenden"}</button>
+        </div>
+      </div>
+    ` : `
+      <div class="row" style="margin-top:10px; justify-content:flex-end;">
+        <button class="btn" type="button" id="btnGateToggle">${gateCollapsed ? "Details anzeigen" : "Details ausblenden"}</button>
+      </div>
+    `;
+
     gateVariants.innerHTML = `
       <div class="pill">Maße immer als <b>Lichte Weite</b> (cm)</div>
       <div class="pill">${gateTypeLabel(c.gateType)}: ${n} Flügel</div>
       <div class="pill">Gleichschenkelig oder asymmetrisch – alles editierbar</div>
+      ${countPill}
+      ${selBox}
     `;
 
     // Normalize bestehende Zeilen
@@ -1376,7 +1404,43 @@ function computeTotals(c){
     if(c.gates.length===0) c.gates=[gateDefaultRow(c)];
 
     gateRows.innerHTML="";
-    c.gates.forEach((g, idx)=>gateRows.appendChild(buildGateRow(g, idx)));
+    const btnT = gateVariants.querySelector("#btnGateToggle");
+    if(btnT){
+      btnT.addEventListener("click", ()=>{
+        gateCollapsed = !gateCollapsed;
+        localStorage.setItem("zaunplaner_gate_collapsed", gateCollapsed ? "1" : "0");
+        renderGateUI();
+      });
+    }
+
+    // Gate-Auswahl (bei mehreren)
+    const sel = gateVariants.querySelector("#gateSel");
+    if(sel){
+      if(gateUiIdx >= c.gates.length) gateUiIdx = 0;
+      sel.innerHTML = "";
+      c.gates.forEach((g,i)=>{
+        const lw = clampInt(g.openingCm||0,0,9999);
+        const opt=document.createElement("option");
+        opt.value=String(i);
+        opt.textContent = `Tor ${i+1} — ${gateTypeLabel(c.gateType)} LW ${lw} cm`;
+        sel.appendChild(opt);
+      });
+      sel.value=String(gateUiIdx);
+      sel.addEventListener("change", ()=>{
+        gateUiIdx = Number(sel.value)||0;
+        renderGateUI();
+      });
+    } else {
+      gateUiIdx = 0;
+    }
+
+    gateRows.style.display = gateCollapsed ? "none" : "";
+    if(gateCollapsed) return;
+
+    // Immer nur ein Tor auf dem Display bearbeiten (übersichtlich)
+    const idxShow = clampInt(gateUiIdx,0,Math.max(0,c.gates.length-1));
+    const g = c.gates[idxShow];
+    gateRows.appendChild(buildGateRow(g, idxShow));
   }
 
   function buildGateRow(g, idx){
@@ -1679,6 +1743,21 @@ function computeTotals(c){
     const segsAll = Array.isArray(c.segments) ? c.segments : [];
     const segs = segsAll.filter(s=>Math.max(0,toNum(s.length,0))>0);
 
+    // Wenn Segmente aktiv sind: alte manuelle Gesamt-Zeilen (Matten/Pfosten/Leisten ohne "Abschnitt") entfernen,
+    // damit nichts doppelt erscheint. (Segmente sind dann die Quelle der Wahrheit.)
+    const segmentsActive = (segs.length>0);
+    if(segmentsActive){
+      p.chef.materials = (p.chef.materials||[]).filter(it=>{
+        if(!it || it.autoKey) return true;
+        const cat = matCategory(it.name||"");
+        if(cat==="matten" || cat==="pfosten" || cat==="eckpfosten" || cat==="leisten"){
+          const n = String(it.name||"");
+          if(!/^Abschnitt\s/i.test(n)) return false;
+        }
+        return true;
+      });
+    }
+
     // Beton (gesamt)
     let cc = null;
     try{ cc = computeConcrete(c); }catch(_){ }
@@ -1694,12 +1773,20 @@ function computeTotals(c){
     const auto = [];
 
     if(segs.length){
+      
+      let started=false;
       for(const s of segs){
         const label = (s.label||"?").toString();
         const len = Math.max(0,toNum(s.length,0));
         const h = clampInt(s.height||c.height||160);
         const panels = len ? Math.ceil(len / PANEL_W) : 0;
-        const posts = panels ? (panels + 1) : 0;
+        if(!panels) continue;
+
+        const posts = panels + (!started ? 1 : 0);
+        started = true;
+
+        const cornersSeg = clampInt(s.corners||0,0,posts);
+        const normalPosts = Math.max(0, posts - cornersSeg);
 
         const sys = (s.system||c.system||"Doppelstab");
         const sysObj = { system: sys, height: h };
@@ -1707,15 +1794,21 @@ function computeTotals(c){
 
         auto.push({ k:`auto_matten_${label}`, label: matLbl, qty: panels, unit:"Stk" });
 
-        if(sys==="Doppelstab"){
-          auto.push({ k:`auto_pfosten_${label}_${h}`, label:`Abschnitt ${label} — Pfosten ${h} cm`, qty: posts, unit:"Stk" });
-          auto.push({ k:`auto_leisten_${label}_${h}`, label:`Abschnitt ${label} — Pfostenleisten ${h} cm`, qty: posts, unit:"Stk" });
-        }else{
-          const pLen = postLenCm(h);
-          auto.push({ k:`auto_pfosten_${label}_${pLen}`, label:`Abschnitt ${label} — Pfosten ${pLen} cm`, qty: posts, unit:"Stk" });
-          auto.push({ k:`auto_leisten_${label}`, label:`Abschnitt ${label} — Pfostenleisten`, qty: posts, unit:"Stk" });
+        // Pfosten/Leisten immer passend zur Höhe (Ecken ziehen normale Pfosten ab)
+        auto.push({ k:`auto_pfosten_${label}_${h}`, label:`Abschnitt ${label} — Pfosten ${h} cm`, qty: normalPosts, unit:"Stk" });
+        if(cornersSeg>0){
+          auto.push({ k:`auto_eckpfosten_${label}_${h}`, label:`Abschnitt ${label} — Eckpfosten ${h} cm`, qty: cornersSeg, unit:"Stk" });
+        }
+        auto.push({ k:`auto_leisten_${label}_${h}`, label:`Abschnitt ${label} — Pfostenleisten ${h} cm`, qty: posts, unit:"Stk" });
+
+        // Sichtschutz pro Abschnitt
+        if(String(s.privacy||"no")==="yes"){
+          const ss = computePrivacyForSegment(len, h, c);
+          if(ss.rolls>0) auto.push({ k:`auto_ss_${label}`, label:`Abschnitt ${label} — Sichtschutz Rollen (${ss.rollLen} m)`, qty:ss.rolls, unit:"Stk" });
+          if(ss.strips>0) auto.push({ k:`auto_ssstrips_${label}`, label:`Abschnitt ${label} — Sichtschutz Streifen (${ss.stripH}×${ss.stripW} cm)`, qty:ss.strips, unit:"Stk" });
         }
       }
+
       if(corners>0){
         if(baseSystem==="Doppelstab"){
           auto.push({ k:`auto_eckpfosten_${maxH}`, label:`Eckpfosten ${maxH} cm`, qty: corners, unit:"Stk" });
@@ -2383,10 +2476,23 @@ function refreshCustomerUI(){
           height: p.customer.height || 160,
           system: p.customer.system || "Doppelstab",
           color: p.customer.color || "Anthrazit (RAL 7016)",
-          privacy: p.customer.privacy || "no"
-        }];
+          privacy: p.customer.privacy || "no",
+        corners: 0
+      }];
       }
-    }
+    
+
+  // normalize
+  p.customer.segments = (p.customer.segments||[]).map((s,i)=>{
+    s = s || {};
+    if(!s.id) s.id = uid();
+    if(!s.label) s.label = String.fromCharCode(65+i);
+    if(s.corners==null || s.corners==="") s.corners = 0;
+    s.corners = clampInt(s.corners,0,999);
+    return s;
+  });
+
+}
 
     function totalLengthFromSegments(){
       const segs = (p.customer && Array.isArray(p.customer.segments)) ? p.customer.segments : [];
@@ -2450,6 +2556,11 @@ function refreshCustomerUI(){
               <label>Farbe</label>
               <input data-k="color" value="${s.color||""}" placeholder="z.B. Anthrazit (RAL 7016)" />
             </div>
+            <div>
+              <label>Eckpfosten</label>
+              <input data-k="corners" inputmode="numeric" value="${s.corners||0}" placeholder="0" />
+            </div>
+
             <div>
               <label>Sichtschutz</label>
               <select data-k="privacy">

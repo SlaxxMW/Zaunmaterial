@@ -223,7 +223,7 @@
       border:1px dashed var(--line);
       border-radius:14px;
       margin-top:10px;
-      background: #fafafa;
+      background: linear-gradient(180deg, rgba(31,42,61,.92), rgba(34,49,74,.92));
     }
     .gateAct{ display:flex; gap:8px; }
     @media (max-width:860px){
@@ -812,7 +812,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js?v=1.4.35" defer></script></script>
+  <script src="./app.js?v=1.4.38" defer></script></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
@@ -827,7 +827,7 @@
 
       try {
         // iOS/PWA: SW URL mit Version -> garantiertes Update
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.35", { updateViaCache: "none" });
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.37", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});

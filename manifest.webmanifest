@@ -1,7 +1,7 @@
 {
   "name": "Zaunplaner",
   "short_name": "Zaunplaner",
-  "start_url": "./?v=1.4.35",
+  "start_url": "./?v=1.4.37",
   "scope": "/Zaunplaner/",
   "display": "standalone",
   "background_color": "#111827",
