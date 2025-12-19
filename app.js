@@ -60,9 +60,9 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.31";
+    const APP_VERSION = "1.4.32";
   const APP_BUILD = "2025-12-19";
-let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
+let state = { version:"1.4.32", selectedProjectId:null, projects:[], meta:{ lastSavedAt:"", lastBackupAt:"" } };
 
   function blankProject(name) {
     return {
@@ -79,13 +79,17 @@ let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
         woodType:"", wpcType:"", slopeType:"flat", slopePct:"", corners:0,
         concreteMode:"sacks", concreteValue:"", note:"", privacy:"no", privacyLen:"", gateType:"none", gates:[]
       },
-      chef: { bagger:"no", ramme:"no", handbohr:"no", schubkarre:"no", haenger:"no", note:"", materials:[], photos:[] },
-      status:"Entwurf"
+      chef: { bagger:"no", ramme:"no", handbohr:"no", schubkarre:"no", haenger:"no", hoursPlanned:"", status:"draft", note:"", materials:[], photos:[] },
+      status:"Entwurf",
+      plannedHours:""
     };
   }
 
-  function save() {
+  function save()
+ {
     try{
+      if(!state.meta) state.meta = {};
+      state.meta.lastSavedAt = nowISO();
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       // safety: keep last known good state to recover from JS bugs/crashes
       if(state && Array.isArray(state.projects) && state.projects.length){
@@ -93,6 +97,7 @@ let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
       }
     }catch(e){}
     updateStatusPill();
+    try{ renderProjectOverview(); }catch(e){}
   }
 
   function migrateLegacy() {
@@ -100,7 +105,7 @@ let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
     if(stable) {
       try {
         const s = JSON.parse(stable);
-        if(s && Array.isArray(s.projects)) { state = {...state, ...s, version:APP_VERSION}; return; }
+        if(s && Array.isArray(s.projects)) { state = {...state, ...s, version:APP_VERSION}; if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"" }; return; }
       } catch(e){}
     }
     
@@ -186,6 +191,25 @@ for(const k of LEGACY_KEYS) {
       const v = (state && state.version) ? state.version : APP_VERSION;
       vp.textContent = "v" + v;
       vp.title = "Zaunplaner v" + v + " • Build " + APP_BUILD;
+    // Save/Backup status
+    const sp = el("savePill");
+    const bp = el("backupPill");
+    const ls = (state && state.meta && state.meta.lastSavedAt) ? state.meta.lastSavedAt : "";
+    const lb = (state && state.meta && state.meta.lastBackupAt) ? state.meta.lastBackupAt : "";
+    const fmt = (iso)=>{
+      try{
+        if(!iso) return "—";
+        const d = new Date(iso);
+        const hh = String(d.getHours()).padStart(2,"0");
+        const mm = String(d.getMinutes()).padStart(2,"0");
+        const dd = String(d.getDate()).padStart(2,"0");
+        const mo = String(d.getMonth()+1).padStart(2,"0");
+        return `${dd}.${mo}. ${hh}:${mm}`;
+      }catch(e){ return "—"; }
+    };
+    if(sp){ sp.textContent = "gespeichert: " + fmt(ls); sp.title = ls || ""; }
+    if(bp){ bp.textContent = "Backup: " + fmt(lb); bp.title = lb || ""; }
+
     }
   }
 
@@ -248,7 +272,71 @@ for(const k of LEGACY_KEYS) {
   const pName=el("pName"), pCreated=el("pCreated"), pDate=el("pDate"), pPhone=el("pPhone"), pEmail=el("pEmail"), pAddr=el("pAddr"), pObj=el("pObj");
   const projSel=el("projSel"), sortSel=el("sortSel"), projCards=el("projCards"), projCountPill=el("projCountPill");
 
-  function refreshProjectSelectors() {
+  
+  // Projektübersicht + Suche (Kunde/Projekt)
+  const projSearch = el("projSearch");
+  const projOverview = el("projOverview");
+
+  function renderProjectOverview(){
+    if(!projOverview) return;
+    const q = (projSearch && projSearch.value) ? projSearch.value.trim().toLowerCase() : "";
+    const list = (state.projects||[]).filter(p=>{
+      if(!q) return true;
+      const hay = `${p.title||""} ${p.addr||""} ${p.objAddr||""} ${p.phone||""}`.toLowerCase();
+      return hay.includes(q);
+    });
+
+    // render table
+    let html = `<div style="overflow:auto; max-height:260px; border-radius:14px; border:1px solid rgba(255,255,255,.08);">`;
+    html += `<table style="width:100%; border-collapse:collapse; font-size:13px;">`;
+    html += `<thead><tr style="text-align:left; opacity:.9;">
+      <th style="padding:10px;">Kunde</th>
+      <th style="padding:10px;">Status</th>
+      <th style="padding:10px; white-space:nowrap;">Std.</th>
+    </tr></thead><tbody>`;
+    if(!list.length){
+      html += `<tr><td colspan="3" style="padding:12px; opacity:.8;">Keine Treffer</td></tr>`;
+    } else {
+      for(const p of list){
+        const isActive = (p.id === state.selectedProjectId);
+        html += `<tr data-pid="${p.id}" style="cursor:pointer; ${isActive?'background:rgba(34,197,94,.12);':''}">
+          <td style="padding:10px; border-top:1px solid rgba(255,255,255,.06);">${escapeHtml(p.title||"")}</td>
+          <td style="padding:10px; border-top:1px solid rgba(255,255,255,.06);">${escapeHtml(p.status||"")}</td>
+          <td style="padding:10px; border-top:1px solid rgba(255,255,255,.06); text-align:right;">${escapeHtml(p.plannedHours||"")}</td>
+        </tr>`;
+      }
+    }
+    html += `</tbody></table></div>`;
+    projOverview.innerHTML = html;
+
+    // row click
+    projOverview.querySelectorAll("tr[data-pid]").forEach(tr=>{
+      tr.addEventListener("click", ()=>{
+        const pid = tr.getAttribute("data-pid");
+        state.selectedProjectId = pid;
+        save();
+        refreshAll();
+        showCustomerEdit();
+      });
+    });
+
+    // also filter dropdown options
+    const ps = el("projSel");
+    if(ps){
+      const keep = new Set(list.map(p=>p.id));
+      Array.from(ps.options).forEach(o=>{
+        if(!o.value) return;
+        o.hidden = q ? !keep.has(o.value) : false;
+      });
+    }
+  }
+
+  if(projSearch){
+    projSearch.addEventListener("input", ()=>{
+      renderProjectOverview();
+    });
+  }
+function refreshProjectSelectors() {
     const list=[...state.projects];
     // sort
     if(sortSel && sortSel.value==="name") list.sort((a,b)=>(a.title||"").localeCompare(b.title||"","de"));
@@ -275,7 +363,9 @@ for(const k of LEGACY_KEYS) {
     if(projCards) projCards.innerHTML="";
     const pc = el("projCountPill");
     if(pc) pc.textContent = String(state.projects.length);
-  }
+  
+    try{ renderProjectOverview(); }catch(e){}
+}
 
   el("btnAdd").addEventListener("click", ()=>{
     const name=(pName.value||"").trim() || "Neuer Kunde";
@@ -299,7 +389,8 @@ for(const k of LEGACY_KEYS) {
   if(el("btnCall")){
     el("btnCall").addEventListener("click", ()=>{
       const p=currentProject(); if(!p) return;
-      callPhone(p.phone || pPhone.value || "");
+    const issues=validateProject(p); if(!showIssues(issues)) return;
+    callPhone(p.phone || pPhone.value || "");
     });
   }
 
@@ -481,7 +572,29 @@ ${p.title}`)) return;
     x.addEventListener("change", persistCustomer);
   });
 
-  function computeTotals(c){
+  
+  // Plausibilitätschecks (damit Demo beim Chef sauber wirkt)
+  function validateProject(p){
+    const issues = [];
+    if(!p) { issues.push("Kein Kunde ausgewählt."); return issues; }
+    const c = p.customer || {};
+    const len = toNum(c.length, 0);
+    if(!len || len<=0) issues.push("Zaunlänge fehlt (m).");
+    if(!c.height) issues.push("Höhe fehlt.");
+    if(!c.system) issues.push("System fehlt.");
+    // Sichtschutz nur wenn Länge vorhanden
+    if(c.privacy==="yes" && (!len || len<=0)) issues.push("Sichtschutz gewählt, aber Zaunlänge fehlt.");
+    // Tore: wenn gateType != none aber keine Varianten
+    if(c.gateType && c.gateType!=="none" && (!Array.isArray(c.gates) || !c.gates.length)) issues.push("Tor-Typ gewählt, aber keine Tor-Varianten hinterlegt.");
+    return issues;
+  }
+
+  function showIssues(issues){
+    if(!issues || !issues.length) return true;
+    toast("⚠️ Bitte prüfen: " + issues[0]);
+    return false;
+  }
+function computeTotals(c){
     const lengthM=Math.max(0, toNum(c.length,0));
     const panels=lengthM ? Math.ceil(lengthM/PANEL_W) : 0;
     const posts=panels ? (panels+1) : 0;
@@ -1270,6 +1383,7 @@ ${p.title}`)) return;
     const p=currentProject(); if(!p) return;
     p.chef.bagger=cBagger.value; p.chef.ramme=cRamme.value; p.chef.handbohr=(el("cHandbohr")?el("cHandbohr").value:"no"); p.chef.schubkarre=(el("cSchubkarre")?el("cSchubkarre").value:"no"); p.chef.haenger=cHaenger.value;
     if(cHoursPlanned) p.chef.hoursPlanned=(cHoursPlanned.value||"").trim();
+    p.plannedHours = (p.chef.hoursPlanned||"").trim();
     if(cStatus) p.chef.status=(cStatus.value||"draft");
     p.chef.note=(cNote.value||"").trim();
     save(); refreshChefPill();
@@ -1292,7 +1406,7 @@ ${p.title}`)) return;
     if(el("cHandbohr")) el("cHandbohr").value=p.chef.handbohr||"no";
     if(el("cSchubkarre")) el("cSchubkarre").value=p.chef.schubkarre||"no";
     cHaenger.value=p.chef.haenger||"no";
-    if(cHoursPlanned) cHoursPlanned.value = (p.chef.hoursPlanned||"");
+    if(cHoursPlanned) cHoursPlanned.value = (p.chef.hoursPlanned||p.plannedHours||"");
     if(cStatus) cStatus.value = (p.chef.status||"draft");
     if(el("cCustomerNote")) el("cCustomerNote").value = (p.customer && p.customer.note) ? p.customer.note : "";
     cNote.value=p.chef.note||"";
@@ -1473,7 +1587,8 @@ ${p.title}`)) return;
     if(p.phone) lines.push(`Tel: ${p.phone}`);
     if(p.addr) lines.push(`Kunde: ${p.addr}`);
     if(p.objAddr) lines.push(`Objekt: ${p.objAddr}`);
-    if(p.chef && (p.chef.hoursPlanned||"").trim()) lines.push(`Geplante Stunden: ${(p.chef.hoursPlanned||"").trim()}`);
+    const hp = (p.chef && (p.chef.hoursPlanned||"").trim()) ? (p.chef.hoursPlanned||"").trim() : ((p.plannedHours||"").trim());
+    if(hp) lines.push(`Geplante Stunden: ${hp}`);
     if(p.chef && (p.chef.status||"") && p.chef.status!=="draft") lines.push(`Status: ${p.chef.status}`);
     lines.push("");
     const custNote = (p.customer && (p.customer.note||"").trim()) ? p.customer.note.trim() : "";
@@ -1512,7 +1627,59 @@ ${p.title}`)) return;
     return lines.join("\n");
 }
 
-  el("btnCWhats").addEventListener("click", async ()=>{ const p=currentProject(); if(!p) return; await shareInternWithPhotos(p); });
+  el("btnCWhats").addEventListener("click", async ()=>{
+    const p=currentProject(); if(!p) return;
+    const issues=validateProject(p); if(!showIssues(issues)) return;
+    await shareInternWithPhotos(p);
+  });
+  // WhatsApp Intern – 2-Step Buttons (empfohlen)
+  const btnCWhatsText = el("btnCWhatsText");
+  const btnCWhatsFotos = el("btnCWhatsFotos");
+
+  if(btnCWhatsText) btnCWhatsText.addEventListener("click", async ()=>{
+    const p=currentProject(); const issues=validateProject(p); if(!showIssues(issues)) return;
+    const text = chefWhatsText(p);
+    // bevorzugt WhatsApp-Web/WhatsApp-App Text öffnen, parallel Text kopieren
+    try{ await navigator.clipboard.writeText(text); }catch(_){}
+    if(openWhatsAppText(text)){
+      toast("WhatsApp", "Intern-Text kopiert ✅");
+      return;
+    }
+    await shareText(text, "Intern");
+  });
+
+  if(btnCWhatsFotos) btnCWhatsFotos.addEventListener("click", async ()=>{
+    const p=currentProject(); const issues=validateProject(p); if(!showIssues(issues)) return;
+    const ph = (p && p.chef && Array.isArray(p.chef.photos)) ? p.chef.photos : [];
+    if(!ph.length){
+      toast("Keine Fotos", "Im Chef/Team Tab erst Fotos hinzufügen");
+      return;
+    }
+    // iOS Share-Sheet: teile nur Fotos (Text ist bereits über "Intern Text" gedacht)
+    if(navigator.share){
+      try{
+        const files=[];
+        const max=Math.min(6, ph.length);
+        for(let i=0;i<max;i++){
+          const x=ph[i];
+          if(!x || !x.dataUrlSmall) continue;
+          const rawName=x.name||`Foto_${i+1}.jpg`;
+          const safeName=String(rawName).replace(/[\/:*?"<>|]+/g,"_");
+          files.push(await dataUrlToFile(x.dataUrlSmall, safeName, x.type));
+        }
+        if(files.length && (!navigator.canShare || navigator.canShare({files}))){
+          await navigator.share({ title:"Intern Fotos", files });
+          toast("Fotos teilen", "✅");
+          return;
+        }
+      }catch(e){}
+    }
+    // Fallback: ZIP laden
+    try{ await downloadInternPhotosZip(p); }catch(_){}
+    toast("Fotos.zip", "geladen – bitte in WhatsApp manuell anhängen");
+  });
+
+
   el("btnCDown").addEventListener("click", ()=>{ const p=currentProject(); if(!p) return; downloadText(chefWhatsText(p), fileSafe(`${p.title}_Intern.txt`)); });
 
   // Intern: Fotos.zip (Desktop-Fallback) + E-Mail
@@ -1535,6 +1702,9 @@ ${p.title}`)) return;
   // Backup
   const btnBackup = el("btnBackup");
   if(btnBackup) btnBackup.addEventListener("click", ()=>{
+    if(!state.meta) state.meta = {};
+    state.meta.lastBackupAt = nowISO();
+    save();
     const data={ exportedAt: nowISO(), tool:"Zaunteam Zaunplaner", version:APP_VERSION, state };
     downloadText(JSON.stringify(data,null,2), "Zaunplaner_Backup.json", "application/json");
   });
@@ -1688,3 +1858,59 @@ ${p.title}`)) return;
   state.version = APP_VERSION;
   refreshAll();
 })();
+  // Demo-Modus (für Chef-Showcase – lädt Beispielkunde ohne echte Daten)
+  const btnDemo = el("btnDemo");
+  function makeDemoPhoto(label){
+    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800">
+      <defs>
+        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
+          <stop offset="0" stop-color="#16a34a"/>
+          <stop offset="1" stop-color="#ef4444"/>
+        </linearGradient>
+      </defs>
+      <rect width="1200" height="800" fill="url(#g)"/>
+      <rect x="70" y="70" width="1060" height="660" rx="40" fill="rgba(0,0,0,0.35)"/>
+      <text x="600" y="360" font-size="64" fill="#fff" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto">${APP_NAME}</text>
+      <text x="600" y="450" font-size="54" fill="#fff" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto">${label}</text>
+      <text x="600" y="520" font-size="28" fill="#fff" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto">Demo-Foto (Platzhalter)</text>
+    </svg>`;
+    return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
+  }
+  function loadDemo(){
+    const p = blankProject("Demo: Musterkunde");
+    p.status = "Entwurf";
+    p.plannedHours = "12";
+    p.chef.hoursPlanned = "12";
+    p.phone = "+49 170 000000";
+    p.email = "demo@zaunteam.de";
+    p.addr = "Musterstraße 1, 12345 Musterstadt";
+    p.objAddr = "Baustelle: Musterweg 9, 12345 Musterstadt";
+    p.plannedDate = new Date().toISOString().slice(0,10);
+    p.customer.length = "37";
+    p.customer.height = 160;
+    p.customer.system = "Doppelstab";
+    p.customer.color = "Anthrazit (RAL 7016)";
+    p.customer.privacy = "yes";
+    p.customer.privacyRollLen = 35;
+    p.customer.gateType = "none";
+    p.customer.note = "Demo-Daten – bitte später löschen.";
+    p.chef.note = "Team: 2 Mann / 1 Tag (Demo)";
+    // zwei Demo-Bilder als Platzhalter
+    p.chef.photos = [
+      { id: uid(), name:"Demo_Foto_1.svg", dataUrl: makeDemoPhoto("Foto 1"), addedAt: nowISO() },
+      { id: uid(), name:"Demo_Foto_2.svg", dataUrl: makeDemoPhoto("Foto 2"), addedAt: nowISO() },
+    ];
+    state.projects = [p];
+    state.selectedProjectId = p.id;
+    if(!state.meta) state.meta = {};
+    save();
+    refreshAll();
+    toast("✅ Demo geladen", p.title);
+  }
+  if(btnDemo) btnDemo.addEventListener("click", ()=>{
+    if(confirm("Demo-Daten laden? (Ersetzt NICHT deine echten Kunden – aber wird als neuer Kunde angelegt)")){
+      loadDemo();
+    }
+  });
+
+

@@ -1,7 +1,7 @@
 {
-  "name": "Zaunteam Zaunplaner",
+  "name": "Zaunplaner",
   "short_name": "Zaunplaner",
-  "start_url": "/Zaunplaner/",
+  "start_url": "/Zaunplaner/?pwa=1",
   "scope": "/Zaunplaner/",
   "display": "standalone",
   "background_color": "#111827",

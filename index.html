@@ -301,10 +301,13 @@
         <div class="row">
           <div class="brand">Zaunteam Zaunplaner <small id="verPill" class="pill accent">v—</small></div>
           <span class="pill" id="statusPill">kein Projekt</span>
+          <span class="pill" id="savePill">gespeichert: —</span>
+          <span class="pill" id="backupPill">Backup: —</span>
           <span class="pill" id="projCountPill">0</span>
         </div>
         <div class="row">
           <button class="btn small" id="btnBackup" type="button">Backup.json</button>
+          <button class="btn small" id="btnDemo" type="button">Demo</button>
       <button id="btnImportJson" class="btn" type="button">Import.json</button>
       <input id="fileImportJson" type="file" accept="application/json,.json" style="display:none" />
           <button class="btn small" id="btnCSV" type="button">Material CSV</button>
@@ -328,6 +331,18 @@
       <!-- LIST VIEW -->
       <div id="kundenListView">
         <div class="card">
+        <div class="row" style="margin-top:6px;">
+          <div style="flex:1;">
+            <label>Suche Kunde</label>
+            <input id="projSearch" placeholder="z.B. Müller, Musterstraße…" />
+          </div>
+        </div>
+
+        <details id="projOverviewDetails" style="margin-top:10px;">
+          <summary style="cursor:pointer; user-select:none;">📋 Projektübersicht (Status / Stunden)</summary>
+          <div id="projOverview" style="margin-top:8px;"></div>
+        </details>
+
           <div class="row">
             <div style="flex:1;">
               <label>Kunde auswählen</label>
@@ -402,6 +417,7 @@
       <div id="kundeKpi" class="row" style="margin-top:8px;"></div>
 
       <div class="grid3">
+        
         <div>
           <label>Erstellt</label>
           <input id="kCreated" type="date" />
@@ -701,7 +717,9 @@
       </div>
 
       <div class="row" style="margin-top:10px;">
-        <button class="btn accent green" id="btnCWhats" type="button">WhatsApp Intern</button>
+        <button class="btn accent green" id="btnCWhatsText" type="button">Intern Text</button>
+        <button class="btn accent green" id="btnCWhatsFotos" type="button">Intern Fotos</button>
+        <button class="btn accent green" id="btnCWhats" type="button">Intern Alles</button>
         <button class="btn blue" id="btnCDown" type="button">Intern‑Text Download</button>
         <button class="btn blue" id="btnCZip" type="button">Fotos.zip</button>
         <button class="btn purple" id="btnCMail" type="button">E‑Mail (Text)</button>
@@ -720,7 +738,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js?v=1.4.31" defer></script></script>
+  <script src="./app.js?v=1.4.32" defer></script></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
@@ -735,7 +753,7 @@
 
       try {
         // iOS/PWA: SW URL mit Version -> garantiertes Update
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.31", { updateViaCache: "none" });
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.32", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});
