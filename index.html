@@ -1,4 +1,582 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Zaunteam Zaunplaner</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#e6e6e6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+
+  <style>
+    :root{
+      /* Zaunteam Mid-Dark (kräftig, aber nicht zu dunkel) */
+      --bg1:#111827;          /* slate-900 */
+      --bg2:#334155;          /* slate-700 */
+      --panel:#253247;        /* panel */
+      --card:#1f2a3d;         /* card */
+      --card2:#22314a;
+
+      --field:#2a3b55;        /* input background */
+      --field2:#314766;
+
+      --line:rgba(255,255,255,.16);
+      --line2:rgba(122,193,65,.40);
+
+      --txt:#f8fafc;
+      --muted:#e2e8f0;
+
+      --green:#7ac141;        /* Zaunteam green */
+      --green2:#b7f36b;       /* brighter */
+      --red:#e53935;          /* Zaunteam red */
+      --red2:#ff6b63;
+
+      --pill:rgba(122,193,65,.22);
+      --pill2:rgba(0,166,251,.14);
+
+      --shadow:0 14px 34px rgba(0,0,0,.32);
+      --shadow2:0 6px 18px rgba(0,0,0,.24);
+
+      --r:16px;
+    }
+    *{ box-sizing:border-box; }
+    html,body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--txt);
+      background:
+        radial-gradient(1200px 800px at 10% 0%, rgba(122,193,65,.18), transparent 55%),
+        radial-gradient(1000px 700px at 95% 20%, rgba(229,57,53,.12), transparent 55%),
+        radial-gradient(900px 650px at 60% 110%, rgba(0,166,251,.12), transparent 60%),
+        linear-gradient(135deg, var(--bg1), var(--bg2));
+    }
+    body{
+      margin:0;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
+      color:var(--txt);
+      background:
+        radial-gradient(900px 420px at 10% 0%, rgba(200,31,54,.10), transparent 60%),
+        radial-gradient(900px 420px at 90% 0%, rgba(0,0,0,.08), transparent 60%),
+        var(--bg);
+    }
+    .wrap{ max-width:1160px; margin:0 auto; padding:14px; }
+    .topbar{
+      background:linear-gradient(180deg, rgba(31,42,61,.92), rgba(34,49,74,.86));
+      border:1px solid var(--line);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
+      padding:12px;
+      position:relative;
+      overflow:hidden;
+    }
+    /* Zaunteam Stripe */
+    .topbar:before{
+      content:"";
+      position:absolute;
+      left:0; right:0; top:0;
+      height:6px;
+      background:linear-gradient(90deg, var(--green), var(--green2), var(--red), var(--red2));
+      opacity:.95;
+    }
+    .toprow{
+      display:flex;
+      gap:10px;
+      align-items:center;
+      justify-content:space-between;
+      flex-wrap:wrap;
+    }
+    .brand{
+      font-weight:950;
+      letter-spacing:.2px;
+      color:var(--green2);
+      text-shadow:0 1px 0 rgba(0,0,0,.35);
+    }
+    .brand small{
+      font-weight:800;
+      color:rgba(226,232,240,.92);
+      font-size:12px;
+    }
+    .row{ display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+    .pill{
+      display:inline-flex;
+      align-items:center;
+      gap:6px;
+      padding:6px 10px;
+      border-radius:999px;
+      background:linear-gradient(180deg, rgba(122,193,65,.22), rgba(0,166,251,.10));
+      border:1px solid rgba(255,255,255,.14);
+      font-size:12px;
+      color:var(--txt);
+      white-space:nowrap;
+    }
+    .pill.good{ border-color:#bfe6bf; background:#e9f6e9; color:var(--good); }
+    .pill.bad{ border-color:#f2b6c0; background:#fde9ee; color:var(--bad); }
+    .pill.accent{ border-color:rgba(200,31,54,.35); background:rgba(200,31,54,.10); color:var(--accent2); }
+
+    .tabs{ display:flex; gap:8px; margin-top:12px; flex-wrap:wrap; }
+    .tabBtn{
+      border:1px solid rgba(255,255,255,.12);
+      background:rgba(17,24,39,.55);
+      color:var(--txt);
+      padding:9px 12px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:900;
+      box-shadow:var(--shadow2);
+    }
+    .tabBtn:hover{ transform: translateY(-1px); }
+    .tabBtn.active{
+      background:linear-gradient(180deg, rgba(122,193,65,.35), rgba(122,193,65,.18));
+      color:var(--txt);
+      border-color:rgba(122,193,65,.65);
+      box-shadow:0 0 0 3px rgba(122,193,65,.12), var(--shadow2);
+    }
+
+    .panel{
+      margin-top:12px;
+      background:linear-gradient(180deg, rgba(37,50,71,.92), rgba(31,42,61,.92));
+      border:1px solid var(--line);
+      border-radius:var(--r);
+      box-shadow:var(--shadow);
+      padding:14px;
+    }
+    h2{ margin:0 0 10px; font-size:18px; }
+    label{ display:block; font-size:12px; color:rgba(226,232,240,.92); margin:8px 0 4px; }
+    .inputBlock{}
+    input, select, textarea{
+      width:100%;
+      padding:10px 10px;
+      border-radius:14px;
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(180deg, var(--field), var(--field2));
+      color:var(--txt);
+      font-size:14px;
+      outline:none;
+    }
+    input:focus, select:focus, textarea:focus{
+      border-color: rgba(200,31,54,.55);
+      box-shadow: 0 0 0 4px rgba(200,31,54,.12);
+    }
+    textarea{ min-height:92px; resize:vertical; }
+    .grid2{ display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+    .grid3{ display:grid; grid-template-columns:1fr 1fr 1fr; gap:10px; }
+    @media (max-width:860px){ .grid2,.grid3{ grid-template-columns:1fr; } }
+
+    .btn{
+      border:1px solid rgba(255,255,255,.12);
+      background:linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+      color:var(--txt);
+      padding:10px 12px;
+      border-radius:14px;
+      cursor:pointer;
+      font-weight:950;
+      transition:transform .08s ease, box-shadow .12s ease, filter .12s ease;
+      box-shadow:var(--shadow2);
+    }
+    .btn:hover{ filter:brightness(1.06); }
+    .btn:active{ transform:translateY(1px); }
+    .btn:hover{ filter:brightness(1.02); }
+    .btn:active{ transform:translateY(1px); box-shadow:0 2px 8px rgba(2,6,23,.12); }
+
+    .btn:hover{ transform: translateY(-1px); }
+    .btn.bad{ border-color:#f2b6c0; color:var(--bad); }
+    .btn.good{ border-color:#bfe6bf; color:var(--good); }
+    .btn.accent{ border-color:rgba(200,31,54,.45); background:rgba(200,31,54,.10); }
+    .btn.small{ padding:7px 10px; font-size:12px; border-radius:12px; }
+    .btn.green{ background:linear-gradient(180deg, rgba(122,193,65,.42), rgba(122,193,65,.18)); border-color:rgba(122,193,65,.70); color:#052e16; }
+    .btn.blue{ background:linear-gradient(180deg, rgba(0,166,251,.38), rgba(0,166,251,.14)); border-color:rgba(0,166,251,.60); color:#001a33; }
+    .btn.orange{ background:linear-gradient(180deg, rgba(245,158,11,.45), rgba(245,158,11,.16)); border-color:rgba(245,158,11,.70); color:#2a1200; }
+    .btn.purple{ background:linear-gradient(180deg, rgba(99,102,241,.40), rgba(99,102,241,.14)); border-color:rgba(99,102,241,.65); color:#0b1026; }
+    .btn.dark{ background:linear-gradient(180deg, rgba(229,57,53,.42), rgba(229,57,53,.18)); border-color:rgba(229,57,53,.70); color:#2a0000; }
+    .btn.green:hover,.btn.blue:hover,.btn.orange:hover,.btn.purple:hover,.btn.dark:hover{ filter:brightness(1.08); }
+    .btn.green:hover,.btn.blue:hover,.btn.orange:hover,.btn.purple:hover,.btn.dark:hover{ filter:brightness(1.04); }
+
+
+    .hint{ color:rgba(226,232,240,.92); font-size:13px; }
+
+    .card{
+      border:1px solid var(--line);
+      border-radius:16px;
+      padding:12px;
+      background:linear-gradient(180deg, rgba(31,42,61,.92), rgba(34,49,74,.92));
+      box-shadow:var(--shadow2);
+      margin-top:10px;
+    }
+    .cardTitle{
+      display:flex; align-items:center; justify-content:space-between; gap:10px;
+    }
+    .meta{ color:rgba(226,232,240,.92); font-size:12px; margin-top:4px; }
+
+    /* Gate UI */
+    .gateRow{
+      display:grid;
+      grid-template-columns: 1fr 1fr 1fr auto;
+      gap:10px;
+      align-items:end;
+      padding:10px;
+      border:1px dashed var(--line);
+      border-radius:14px;
+      margin-top:10px;
+      background: #fafafa;
+    }
+    .gateAct{ display:flex; gap:8px; }
+    @media (max-width:860px){
+      .gateRow{ grid-template-columns:1fr; }
+      .gateAct{ justify-content:flex-end; }
+    }
+
+    /* Fotos */
+    #photoGrid{
+      display:grid;
+      grid-template-columns:repeat(3, 1fr);
+      gap:10px;
+    }
+    @media (max-width:860px){ #photoGrid{ grid-template-columns:repeat(2, 1fr);} }
+    .ph{
+      border:1px dashed var(--line);
+      border-radius:16px;
+      padding:10px;
+      background:#fafafa;
+      min-height:140px;
+    }
+    .ph img{ width:100%; border-radius:14px; display:block; }
+
+    #toast{
+      display:none;
+      position:fixed;
+      left:50%;
+      transform:translateX(-50%);
+      bottom:18px;
+      z-index:9999;
+      max-width:min(720px, calc(100% - 22px));
+      background:linear-gradient(90deg, rgba(122,193,65,.28), rgba(229,57,53,.22), rgba(0,166,251,.22), rgba(17,24,39,.95));
+      color:#fff;
+      padding:10px 14px;
+      border-radius:999px;
+      border:1px solid rgba(255,255,255,.14);
+      box-shadow:0 14px 38px rgba(0,0,0,.45);
+      font-weight:900;
+      font-size:13px;
+    }
+  
+    /* Dropdown readability (native dropdown lists) */
+    select{ color:var(--txt); }
+    select option{ background:#f8fafc; color:#0f172a; }
+    /* Safari/iOS sometimes uses optgroup */
+    optgroup{ background:#f8fafc; color:#0f172a; }
+
+    /* Materialliste kompakt (Chef) */
+    #matList details{ border:1px solid var(--line); border-radius:16px; overflow:hidden; background:rgba(255,255,255,.04); }
+    #matList summary{ cursor:pointer; padding:10px 12px; font-weight:900; list-style:none; display:flex; align-items:center; justify-content:space-between; gap:10px; }
+    #matList summary::-webkit-details-marker{ display:none; }
+    .matRows{ padding:10px 12px 12px; display:flex; flex-direction:column; gap:8px; }
+    .matRow{
+      border:1px solid var(--line);
+      border-radius:14px;
+      padding:10px;
+      background:linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+      display:grid;
+      grid-template-columns: 1fr 110px 90px 44px;
+      gap:8px;
+      align-items:center;
+    }
+    .matRow .matName{ font-weight:900; }
+    .matRow input{ padding:8px 10px; border-radius:12px; }
+    .matRow select{ padding:8px 10px; border-radius:12px; }
+    .matRow .btn{ padding:8px 10px; border-radius:12px; }
+    @media (max-width:820px){
+      .matRow{ grid-template-columns: 1fr 110px 90px 44px; }
+    }
+</style>
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="toprow">
+        <div class="row">
+          <div class="brand">Zaunteam Zaunplaner <small id="verPill" class="pill accent">v—</small></div>
+          <span class="pill" id="statusPill">kein Projekt</span>
+          <span class="pill" id="projCountPill">0</span>
+        </div>
+        <div class="row">
+          <button class="btn small" id="btnBackup" type="button">Backup.json</button>
+          <button class="btn small" id="btnCSV" type="button">Material CSV</button>
+          <button class="btn small bad" id="btnReset" type="button">Reset</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tabBtn active" data-tab="kunde" type="button">👤 Kunde / Projekt</button>
+        <button class="tabBtn" data-tab="chef" type="button">🛠️ Chef/Team</button>
+      </div>
     </div>
+
+    <!-- KUNDE/PROJEKT (vereint) -->
+    <section class="panel tab" data-tab="kunde">
+      <h2>👤 Kunde / Projekt</h2>
+
+      <div class="grid3">
+        <div>
+          <label>Kundenname</label>
+          <input id="pName" placeholder="Neuer Kunde" />
+        </div>
+        <div>
+          <label>Erstellt</label>
+          <input id="pCreated" type="date" />
+        </div>
+        <div>
+          <label>Ausführung</label>
+          <input id="pDate" type="date" />
+        </div>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Telefon</label>
+          <input id="pPhone" inputmode="tel" placeholder="+49 …" />
+        </div>
+        <div>
+          <label>E‑Mail</label>
+          <input id="pEmail" inputmode="email" placeholder="kunde@email.de" />
+        </div>
+        <div>
+          <label>Sortierung</label>
+          <select id="sortSel">
+            <option value="created">Erstellt</option>
+            <option value="date">Ausführung</option>
+            <option value="name">Name</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Kundenadresse</label>
+          <input id="pAddr" placeholder="Straße, PLZ Ort" />
+        </div>
+        <div>
+          <label>Objektadresse</label>
+          <input id="pObj" placeholder="falls abweichend" />
+        </div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button class="btn good dark" id="btnAdd" type="button">+ Kunde anlegen</button>
+        <button class="btn bad" id="btnDel" type="button">Kunde löschen</button>
+        <button class="btn orange" id="btnCall" type="button">📞 anrufen</button>
+        <button class="btn purple" id="btnMail" type="button">✉️ mailen</button>
+      </div>
+
+      <div class="card">
+        <div class="grid2">
+          <div>
+            <label>Kunde auswählen</label>
+            <select id="projSel"></select>
+          </div>
+          <div class="hint" style="align-self:end;">
+            Tipp: Projektkarte anklicken → springt zu „Kunde“.
+          </div>
+        </div>
+      </div>
+
+      <div id="projCards"></div>
+    </section>
+
+    <!-- KUNDE -->
+    <section class="panel tab" data-tab="kunde">
+      <div class="cardTitle">
+        <h2 id="kundeTitle">👤 Kunde</h2>
+        <span class="pill" id="kundePill">leer</span>
+      </div>
+      <div id="kundeKpi" class="row" style="margin-top:8px;"></div>
+
+      <div class="grid3">
+        <div>
+          <label>Erstellt</label>
+          <input id="kCreated" type="date" />
+        </div>
+        <div>
+          <label>Ausführung</label>
+          <input id="kPlanned" type="date" />
+        </div>
+        <div>
+          <label>Telefon</label>
+          <input id="kPhone" inputmode="tel" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>E‑Mail</label>
+          <input id="kEmail" inputmode="email" />
+        </div>
+        <div>
+          <label>Zaunlänge (m)</label>
+          <input id="kLen" inputmode="decimal" placeholder="z. B. 17,5" />
+        </div>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Höhe</label>
+          <select id="kHeight"></select>
+        </div>
+        <div>
+          <label>System</label>
+          <select id="kSystem">
+            <option>Doppelstab</option>
+            <option>Holz</option>
+            <option>WPC</option>
+            <option>Alu</option>
+            <option>Diagonalgeflecht</option>
+            <option>Tornado</option>
+            <option>Elektrozaun</option>
+          </select>
+        </div>
+        <div>
+          <label>Farbe</label>
+          <select id="kColor"></select>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Holzart</label>
+          <select id="kWood"></select>
+        </div>
+        <div>
+          <label>WPC Variante</label>
+          <select id="kWpc"></select>
+        </div>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Gefälle</label>
+          <select id="kSlopeType">
+            <option value="flat">kein</option>
+            <option value="pct">%</option>
+          </select>
+        </div>
+        <div>
+          <label>Gefälle %</label>
+          <input id="kSlopePct" inputmode="decimal" placeholder="z. B. 2,5" />
+        </div>
+        <div>
+          <label>Ecken</label>
+          <div class="row">
+            <button class="btn small" id="kCornersMinus" type="button">−</button>
+            <input id="kCorners" inputmode="numeric" value="0" style="max-width:140px;" />
+            <button class="btn small" id="kCornersPlus" type="button">+</button>
+          </div>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Beton‑Modus</label>
+          <select id="kConcreteMode">
+            <option value="sacks">Sack (Auto)</option>
+            <option value="m3">m³ (Auto)</option>
+          </select>
+          <div class="hint" id="kConcreteAutoHint" style="margin-top:6px;"></div>
+        </div>
+        <div>
+          <label>Beton (Auto)</label>
+          <input id="kConcreteVal" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Sichtschutz?</label>
+          <select id="kPrivacy">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+        <div>
+          <label>Sichtschutz‑Länge (m)</label>
+          <input id="kPrivacyLen" inputmode="decimal" placeholder="leer = ganze Zaunlänge" />
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="grid2">
+          <div>
+            <label>Tor‑Typ</label>
+            <select id="kGateType">
+              <option value="none">kein Tor</option>
+              <option value="single">Einzeltor</option>
+              <option value="double">Doppeltor</option>
+              <option value="custom">Sonder</option>
+            </select>
+          </div>
+          <div class="row" style="align-self:end;">
+            <button class="btn small" id="btnGateAdd" type="button">+ Tor</button>
+            <button class="btn small bad" id="btnGateClear" type="button">Tore löschen</button>
+          </div>
+        </div>
+        <div id="gateVariants" class="hint" style="margin-top:10px;"></div>
+        <div id="gateRows" style="margin-top:10px;"></div>
+      </div>
+
+      <label>Kunden‑Notiz</label>
+      <textarea id="kNote" placeholder="Notizen…"></textarea>
+
+      <div class="row" style="margin-top:10px;">
+        <button class="btn good dark" id="btnKCalc" type="button">Material berechnen → Chef</button>
+        <button class="btn blue" id="btnKDown" type="button">Kunden‑Text Download</button>
+        <button class="btn accent green" id="btnKWhats" type="button">WhatsApp Kunde</button>
+        <button class="btn orange" id="btnKCall" type="button">📞</button>
+        <button class="btn purple" id="btnKMail" type="button">✉️</button>
+      </div>
+    </section>
+
+    <!-- CHEF / TEAM -->
+    <section class="panel tab" data-tab="chef" style="display:none;">
+      <div class="cardTitle">
+        <h2 id="chefTitle">🛠️ Chef / Team</h2>
+        <span class="pill" id="chefPill">leer</span>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Bagger</label>
+          <select id="cBagger">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+        <div>
+          <label>Ramme</label>
+          <select id="cRamme">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+        <div>
+          <label>Hänger</label>
+          <select id="cHaenger">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Handbohrgerät</label>
+          <select id="cHandbohr">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
         <div>
           <label>Schubkarre</label>
           <select id="cSchubkarre">
@@ -104,7 +682,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js" defer></script>
+  <script src="./app.js" defer></script></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
