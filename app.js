@@ -500,7 +500,7 @@ ${p.title}`)) return;
 
 
   function clampInt(v, lo=0, hi=99) {
-    const n=Math.trunc(Number(v));
+  const n=Math.trunc(Number(v));
     if(!Number.isFinite(n)) return lo;
     return Math.max(lo, Math.min(hi, n));
   }
@@ -514,18 +514,22 @@ ${p.title}`)) return;
 
   function toggleMaterialDependent(){
     const sys = kSystem.value;
-    const woodOn = (sys==="Holz");
-    const wpcOn  = (sys==="WPC");
+    const woodOn = (sys=="Holz");
+    const wpcOn = (sys==="WPC");
     kWood.disabled = !woodOn;
     kWpc.disabled = !wpcOn;
     if(!woodOn) kWood.value="—";
-    if(!wpcOn)  kWpc.value="—";
+    if(!wpcOn) kWpc.value="—";
   }
   kSystem.addEventListener("change", ()=>{ toggleMaterialDependent(); persistCustomer(); });
 
   function togglePrivacyDependent(){
     if(!kPrivacy || !kPrivacyLen) return;
     const on = (kPrivacy.value==="yes");
+    const p=currentProject();
+    const hasSegments = p && p.customer && Array.isArray(p.customer.segments) && p.customer.segments.length>0;
+    const on = !hasSegments && (kPrivacy.value==="yes");
+    kPrivacy.disabled = hasSegments;
     kPrivacyLen.disabled = !on;
     if(!on) kPrivacyLen.value="";
   }
@@ -535,9 +539,15 @@ ${p.title}`)) return;
 
 
   function persistCustomer() {
-    const p=currentProject(); if(!p) return;
+    const p = currentProject(); if (!p) return;
     const c=p.customer;
     c.length=(kLen.value||"").trim();
+    const segs = segmentList(c);
+    if(segs.length){
+      c.length = String(segs.reduce((a,s)=>a+Math.max(0,toNum(s.length,0)),0) || "");
+    } anders {
+      c.length=(kLen.value||"").trim();
+    }
     c.height=Number(kHeight.value)||160;
     c.system=kSystem.value;
     c.color=kColor.value;
@@ -549,20 +559,27 @@ ${p.title}`)) return;
     c.concreteMode=kConcreteMode.value;
     c.privacy = (kPrivacy ? (kPrivacy.value||"no") : (c.privacy||"no"));
     c.privacyLen = (c.privacy==="yes") ? ((kPrivacyLen ? (kPrivacyLen.value||"") : "").trim()) : "";
+    if(segs.length){
+      c.privacy = c.segments.some(x=>(x.privacy||"no")==="yes") ? "yes" : "no";
+      c.privacyLen = "";
+    } anders {
+      c.privacy = (kPrivacy ? (kPrivacy.value||"no") : (c.privacy||"no"));
+      c.privacyLen = (c.privacy==="yes") ? ((kPrivacyLen ? (kPrivacyLen.value||"") : "").trim()) : "";
+    }
     c.privacyRollLen = (c.privacy==="yes") ? (toNum((kPrivacyRoll ? kPrivacyRoll.value : (c.privacyRollLen||35)),35) || 35) : 35;
     c.note=(kNote.value||"").trim();
     ensureGateDefaults(c);
     if(kGateType) c.gateType = kGateType.value || c.gateType || "none";
     if(c.gateType==="none") c.gates = [];
     c.concreteValue="";
-    try{
+    versuchen{
       const cc = computeConcrete(c);
       c.concreteValue = concreteDisplayValue(c, cc);
       c.concreteAuto = cc;
     }catch(_){ c.concreteAuto = null; }
     renderConcreteAutoUI(c);
     ensureChefAutoMaterials(p);
-    save();
+    speichern();
     refreshKpi();
     refreshChefPill();
   }
@@ -574,63 +591,7 @@ ${p.title}`)) return;
 
   
   // Plausibilitätschecks (damit Demo beim Chef sauber wirkt)
-  
-  // Adresse / PLZ→Ort Lookup (DE)
-  const ZIP_CITY_CACHE_KEY = "jsZipCityCache_v1";
-  function getZipCityCache(){
-    try{ return JSON.parse(localStorage.getItem(ZIP_CITY_CACHE_KEY)||"{}")||{}; }catch(e){ return {}; }
-  }
-  function setZipCityCache(cache){
-    try{ localStorage.setItem(ZIP_CITY_CACHE_KEY, JSON.stringify(cache||{})); }catch(e){}
-  }
-  async function lookupCityByZip(zip){
-    zip = String(zip||"").trim();
-    if(!/^[0-9]{5}$/.test(zip)) return "";
-    const cache = getZipCityCache();
-    if(cache[zip]) return cache[zip];
-
-    // 1) zippopotam.us (free)
-    try{
-      const r = await fetch(`https://api.zippopotam.us/DE/${zip}`, { cache:"no-store" });
-      if(r.ok){
-        const j = await r.json();
-        const place = j && j.places && j.places[0];
-        const city = place ? (place["place name"] || "") : "";
-        if(city){
-          cache[zip]=city; setZipCityCache(cache);
-          return city;
-        }
-      }
-    }catch(e){}
-
-    // 2) openplzapi (fallback)
-    try{
-      const r = await fetch(`https://openplzapi.org/de/Localities?postalCode=${zip}`, { cache:"no-store" });
-      if(r.ok){
-        const j = await r.json();
-        const city = (Array.isArray(j) && j[0] && (j[0].name || j[0].localityName)) ? (j[0].name || j[0].localityName) : "";
-        if(city){
-          cache[zip]=city; setZipCityCache(cache);
-          return city;
-        }
-      }
-    }catch(e){}
-    return "";
-  }
-
-  function fullCustomerAddress(p){
-    const street = (p.addrStreet||"").trim();
-    const zip = (p.addrZip||"").trim();
-    const city = (p.addrCity||"").trim();
-    const country = (p.addrCountry||"DE").trim();
-    const parts = [];
-    if(street) parts.push(street);
-    const zc = [zip, city].filter(Boolean).join(" ");
-    if(zc) parts.push(zc);
-    if(country && country.toUpperCase()!=="DE") parts.push(country);
-    return parts.join(", ");
-  }
-
+@@ -634,109 +647,169 @@ ${p.title}`)) return;
   function mapsLink(p){
     const q = ((p.objAddr||"").trim() || fullCustomerAddress(p) || (p.addr||"").trim());
     if(!q) return "";
@@ -640,7 +601,7 @@ function validateProject(p){
     const issues = [];
     if(!p) { issues.push("Kein Kunde ausgewählt."); return issues; }
     const c = p.customer || {};
-    const len = Array.isArray(c.segments)&&c.segments.length ? c.segments.reduce((a,s)=>a+Math.max(0,toNum(s.length,0)),0) : toNum(c.length, 0);
+    const len ​​= Array.isArray(c.segments)&&c.segments.length ? c.segments.reduce((a,s)=>a+Math.max(0,toNum(s.length,0)),0) : toNum(c.length, 0);
     if(!len || len<=0) issues.push("Zaunlänge fehlt (m).");
     if(!c.height) issues.push("Höhe fehlt.");
     if(!c.system) issues.push("System fehlt.");
@@ -648,7 +609,7 @@ function validateProject(p){
     if(c.privacy==="yes" && (!len || len<=0)) issues.push("Sichtschutz gewählt, aber Zaunlänge fehlt.");
     // Tore: wenn gateType != none aber keine Varianten
     if(c.gateType && c.gateType!=="none" && (!Array.isArray(c.gates) || !c.gates.length)) issues.push("Tor-Typ gewählt, aber keine Tor-Varianten hinterlegt.");
-    return issues;
+    Rückgabeprobleme;
   }
 
   function showIssues(issues){
@@ -659,6 +620,43 @@ function validateProject(p){
 function computeTotals(c){
     const segs = c && Array.isArray(c.segments) ? c.segments : null;
     const lengthM = Math.max(0, segs ? segs.reduce((a,s)=>a+Math.max(0,toNum(s.length,0)),0) : toNum(c.length,0));
+  function segmentList(c){
+    return (c && Array.isArray(c.segments)) ? c.segments.filter(s=>s && toNum(s.length,0)>0) : [];
+  }
+  Funktion computeSegmentTotals(seg){
+    const lengthM = Math.max(0, toNum(seg && seg.length, 0));
+    const panels = lengthM ? Math.ceil(lengthM/PANEL_W) : 0;
+    const posts = panels ? (panels+1) : 0;
+    const postStrips = posts;
+    zurückkehren {
+      LängeM,
+      Paneele,
+      Beiträge
+      CornerPosts:0,
+      postStrips,
+      Höhe: Number(seg && seg.height) || 160,
+      System: (seg && seg.system) || „Doppelter Stab“,
+      Farbe: (seg && seg.color) || "Anthrazit (RAL 7016)",
+      label: seg && seg.label
+    };
+  }
+  function computeTotals(c){
+    const segs = segmentList(c);
+    if(segs.length){
+      let lengthM=0, panels=0, posts=0, postStrips=0;
+      for(const s of segs){
+        const st = computeSegmentTotals(s);
+        lengthM += st.lengthM;
+        panels += st.panels;
+        posts += st.posts;
+        postStrips += st.postStrips;
+      }
+      const corners=clampInt(c.corners||0);
+      const cornerPosts=corners;
+      postStrips += cornerPosts;
+      return {lengthM, panels, posts, cornerPosts, postStrips};
+    }
+    const lengthM = Math.max(0, toNum(c.length,0));
     const panels=lengthM ? Math.ceil(lengthM/PANEL_W) : 0;
     const posts=panels ? (panels+1) : 0;
     const corners=clampInt(c.corners||0);
@@ -667,45 +665,69 @@ function computeTotals(c){
     return {lengthM, panels, posts, cornerPosts, postStrips};
   }
   function computePrivacyRolls(c, totals){
-    try{
+    versuchen{
       if(!c) return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
+      if(!c) return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0 , segments:[] };
 
       const rollLen = clampInt(c.privacyRollLen || 35, 20, 100);
 
       // Wenn Segmente vorhanden: summiere Sichtschutz je Segment (Höhen können variieren)
       if(Array.isArray(c.segments) && c.segments.length){
-        let totalStripM = 0;
+      const segs = segmentList(c);
+      if(segs.length){
+        setze totalStripM = 0;
         let lengthM = 0;
         let panelsAll = 0;
+        const details = [];
 
-        for(const s of c.segments){
+        for(const s of c.segment s){
+        for(const s of seg s){
           const segLen = Math.max(0, toNum(s.length,0));
           const segPriv = (s.privacy||c.privacy||"no")==="yes";
           if(!segLen){ continue; }
           lengthM += segLen;
-          const panels = segLen ? Math.ceil(segLen / PANEL_W) : 0;
-          panelsAll += panels;
+          if(!segLen || !segPriv){ continue; }
+          constpanels = segLen ? Math.ceil(segLen / PANEL_W) : 0;
+          panelAll += panels;
           if(!segPriv) continue;
           const h = Number(s.height||c.height)||160;
           const stripsPerPanel = Math.max(0, Math.round(h/20)); // 100→5,120→6...
           totalStripM += panels * stripsPerPanel * PANEL_W;
+          const segStripM = panels * stripsPerPanel * PANEL_W;
+          const segRolls = segStripM ? Math.ceil(segStripM / rollLen) : 0;
+          totalStripM += segStripM;
+          lengthM += segLen;
+          details.push({
+            label: s.label || "",
+            LängeM: SegelLen,
+            Paneele,
+            Streifen pro Panel,
+            totalStripM: segStripM,
+            rolls: segRolls,
+            rollLen,
+            Höhe: h
+          });
         }
         const rolls = totalStripM ? Math.ceil(totalStripM / rollLen) : 0;
         return {rolls, rollLen, stripsPerPanel:0, panels:panelsAll, totalStripM, lengthM};
+        return {rolls, rollLen, stripsPerPanel:0, panels:panelsAll, totalStripM, lengthM , segments:details };
       }
 
       // Legacy (ein Abschnitt)
       if((c.privacy||"no")!=="yes") return {rolls:0, rollLen, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
+      if((c.privacy||"no")!=="yes") return {rolls:0, rollLen, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0 , segments:[] };
       const h = Number(c.height)||160;
       const stripsPerPanel = Math.max(0, Math.round(h/20));
-      const baseLen = toNum(c.privacyLen, 0) || (totals && totals.lengthM) || toNum(c.length, 0) || 0;
+      const baseLen = toNum(c.privacyLen, 0) || (Summen && GesamtlängeM) || toNum(c.length, 0) || 0;
       const lengthM = Math.max(0, baseLen);
       const panels = lengthM ? Math.ceil(lengthM / PANEL_W) : 0;
       const totalStripM = panels * stripsPerPanel * PANEL_W;
       const rolls = totalStripM ? Math.ceil(totalStripM / rollLen) : 0;
       return {rolls, rollLen, stripsPerPanel, panels, totalStripM, lengthM};
+      return {rolls, rollLen, stripsPerPanel, panels, totalStripM, lengthM , segments:[] };
     }catch(e){
       return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
+      return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0 , segments:[] };
     }
   }
 
@@ -713,7 +735,21 @@ function computeTotals(c){
   function sysLabel(c){
     const h=Number(c.height)||160;
     const base = (c.system==="Doppelstab")?"Doppelstab‑Matten":(c.system==="Aluminium")?"Alu‑Elemente":(c.system==="Holz")?"Holz‑Elemente":(c.system==="WPC")?"WPC‑Elemente":(c.system==="Diagonal Geflecht")?"Diagonal‑Geflecht":(c.system==="Tornado")?"Tornado‑Zaun":(c.system==="Elektrozaun")?"Elektrozaun":"Zaun‑Elemente";
+    const sys = String((c&&c.system)||"").toLowerCase();
+    const base = (sys.indexOf("doppelstab")!==-1) ? "Doppelstab‑Matten"
+      : (sys.indexOf("einfachstab")!==-1) ? "Einfachstab‑Matten"
+      : (sys.indexOf("aluminum")===0 || sys.indexOf("aluminum")!==-1) ? “Alu‑Element”
+      : (sys.indexOf("holz")!==-1) ? "Holz‑Elemente"
+      : (sys.indexOf("wpc")!==-1) ? "WPC‑Elemente"
+      : (sys.indexOf("diagonal")!==-1) ? "Diagonal‑Geflecht"
+      : (sys.indexOf("tornado")!==-1) ? "Tornado‑Zaun"
+      : (sys.indexOf("electro")!==-1) ? “Elektrosion”
+      : "Zaun‑Elemente";
     return `${base} 2,50m • ${h} cm`;
+  }
+  Funktion sysLabelForSegment(seg){
+    if(!seg) return sysLabel({});
+    return sysLabel({ height: seg.height, system: seg.system });
   }
 
   // Tore (Varianten)
@@ -729,7 +765,7 @@ function computeTotals(c){
     ensureGateDefaults(c);
     if(!c || c.gateType==="none") return {total:0, rows:[], text:""};
     const rows=(c.gates||[]).map(g=>({
-      height:Number(g.height)||160,
+      Höhe:Number(g.height)||160,
       widthCm: clampInt((g.widthCm!=null ? g.widthCm : (g.width!=null ? g.width : 125)), 50, 400),
       qty: clampInt((g.qty!=null ? g.qty : (g.count!=null ? g.count : 1)), 0, 20),
     })).filter(g=>g.qty>0);
@@ -739,58 +775,10 @@ function computeTotals(c){
   }
 
 
-  function computeConcrete(c){
-    const t = computeTotals(c);
-    const g = gateSummary(c);
-    const gateCount = Number(g.total||0);
-    const gateHoles = gateCount*2; // Torpfosten (2 pro Tor)
-    const normalHoles = (Number(t.posts||0) + Number(t.cornerPosts||0));
-    const sacks = (normalHoles*1.5) + (gateHoles*3);
-    const m3 = (normalHoles*0.025) + (gateHoles*0.05);
-    return {normalHoles, gateHoles, totalHoles: normalHoles+gateHoles, gateCount, sacks, m3};
-  }
-  function concreteDisplayValue(c, cc){
-    const lengthM = Math.max(0, toNum(c.length,0));
-    if(!lengthM) return "";
-    if((c.concreteMode||"sacks")==="m3") return fmtN(cc.m3, 3);
-    return fmtN(cc.sacks, 1);
-  }
-  function concreteHintText(c, cc){
-    const lengthM = Math.max(0, toNum(c.length,0));
-    if(!lengthM) return "Beton wird automatisch berechnet, sobald die Zaunlänge gesetzt ist.";
-    const parts = [];
-    parts.push(`Auto: ${cc.totalHoles} Löcher`);
-    if(cc.gateHoles>0) parts.push(`(normal ${cc.normalHoles}, Torpfosten ${cc.gateHoles})`);
-    else parts.push(`(normal ${cc.normalHoles})`);
-    parts.push(`→ ${fmtN(cc.sacks,1)} Sack / ${fmtN(cc.m3,3)} m³`);
-    return parts.join(" ");
-  }
-  function renderConcreteAutoUI(c){
-    if(!kConcreteVal) return;
-    try{
-      kConcreteVal.readOnly = true;
-      const cc = computeConcrete(c);
-      kConcreteVal.value = concreteDisplayValue(c, cc);
-      const h = el("kConcreteAutoHint");
-      if(h) h.textContent = concreteHintText(c, cc);
-    }catch(_){ }
-  }
-
-  function refreshKpi(){
-    const p=currentProject(); if(!p) return;
-    const c=p.customer;
-    renderConcreteAutoUI(c);
-    const t=computeTotals(c);
-    const ok=!!(c.length||"").trim();
-    const pill=el("kundePill");
-    pill.textContent = ok ? "gesetzt" : "leer";
-    pill.className = "pill " + (ok ? "good" : "");
-    el("kundeTitle").textContent = `👤 Kunde: ${p.title}`;
-    if(kCreated) kCreated.value = dateFromIso(p.createdAt||"");
-    if(kPlanned) kPlanned.value = p.plannedDate || "";
-    if(kPhone) kPhone.value = p.phone || "";
+  Funktion computeConcrete(c){
+@@ -792,74 +865,96 @@ Funktion computeTotals(c){
     if(kEmail) kEmail.value = p.email || "";
-    kundeKpi.innerHTML="";
+    customerKpi.innerHTML="";
     if(!ok) return;
     const add = (txt)=>{ const sp=document.createElement("span"); sp.className="pill"; sp.innerHTML=txt; kundeKpi.appendChild(sp); };
     add(`Matten/Elemente: <b>${t.panels}</b>`);
@@ -809,7 +797,7 @@ function computeTotals(c){
   }
 
   el("btnKCalc").addEventListener("click", ()=>{
-    const p=currentProject(); if(!p) return;
+    const p = currentProject(); if (!p) return;
     const c=p.customer;
     const t=computeTotals(c);
     if(!t.lengthM) return toast("Länge fehlt","Bitte Zaunlänge eingeben");
@@ -817,7 +805,26 @@ function computeTotals(c){
     upsertMat(mats, "Zaun‑Übersicht", 1, "Stk", `${fmt(t.lengthM)} m • ${c.height} cm • ${c.system} • ${c.color}${(c.system==="Holz"&&c.woodType)?(" • "+c.woodType):""}${(c.system==="WPC"&&c.wpcType)?(" • "+c.wpcType):""}`);
     upsertMat(mats, sysLabel(c), t.panels, "Stk", "gesamt");
     upsertMat(mats, "Pfosten", t.posts, "Stk", "gesamt");
-    if(t.cornerPosts) upsertMat(mats, "Eckpfosten", t.cornerPosts, "Stk", "gesamt");
+    if(t.cornerPosts) upsertMat(mats, "corner posts", t.cornerPosts, "pcs", "total");
+    const segs = segmentList(c);
+    if(segs.length){
+      const segNote = segs.map(s=>`${s.label||""}:${fmt(toNum(s.length,0))}m`).join(" • ");
+      upsertMat(mats, "Zaun‑Übersicht (Abschnitte)", 1, "Stk", segNote || `${fmt(t.lengthM)} m`);
+      for(const seg of segs){
+        const st = computeSegmentTotals(seg);
+        const prefix = seg.label ? `Abschnitt ${seg.label} – ` : "";
+        upsertMat(mats, `${prefix}${sysLabelForSegment(seg)}`, st.panels, "Stk", `${fmt(st.lengthM)} m`);
+        upsertMat(mats, `${prefix}Pfosten`, st.posts, "Stk", `${fmt(st.lengthM)} m`);
+        upsertMat(mats, `${prefix}Pfostenleisten`, st.postStrips, "Stk", `${fmt(st.lengthM)} m`);
+      }
+      if(t.cornerPosts) upsertMat(mats, "corner posts", t.cornerPosts, "pcs", "total");
+      if(t.cornerPosts) upsertMat(mats, "Pfostenleisten (Ecken)", t.cornerPosts, "Stk", "Eckpfosten");
+    } anders {
+      upsertMat(mats, "Zaun‑Übersicht", 1, "Stk", `${fmt(t.lengthM)} m • ${c.height} cm • ${c.system} • ${c.color}${(c.system==="Holz"&&c.woodType)?(" • "+c.woodType):""}${(c.system==="WPC"&&c.wpcType)?(" • "+c.wpcType):""}`);
+      upsertMat(mats, sysLabel(c), t.panels, "Stk", "gesamt");
+      upsertMat(mats, "Pfosten", t.posts, "Stk", "gesamt");
+      if(t.cornerPosts) upsertMat(mats, "corner posts", t.cornerPosts, "pcs", "total");
+    }
     {
       const g=gateSummary(c);
       if(g.total) upsertMat(mats, `Tor (${gateTypeLabel(c.gateType)})`, g.total, "Stk", g.text||"");
@@ -825,6 +832,17 @@ function computeTotals(c){
     upsertMat(mats, "Pfostenleisten", t.postStrips, "Stk", "gesamt");
     if((c.privacy||"no")==="yes"){
       const pr = computePrivacyRolls(c, t);
+    if(!segs.length){
+      upsertMat(mats, "Pfostenleisten", t.postStrips, "Stk", "gesamt");
+    }
+    const pr = computePrivacyRolls(c, t);
+    if(segs.length && pr && Array.isArray(pr.segments)){
+      for(const det of pr.segments){
+        const prefix = det.label ? `Abschnitt ${det.label} – ` : "";
+        if(det.lengthM>0) upsertMat(mats, `${prefix}Datenschutz (Länge)`, det.lengthM, "m", `${det.height||""} cm`);
+        if(det.rolls>0) upsertMat(mats, `${prefix}Sichtschutz‑Rollen`, det.rolls, "Rolle", `${det.rollLen||35}m • ${det.stripsPerPanel||0}×2,5m je Feld • gesamt ${fmt(det.totalStripM||0)}m`);
+      }
+    } else if((c.privacy||"no")==="yes"){
       if(pr.lengthM>0){
         upsertMat(mats, "Sichtschutz (Länge)", pr.lengthM, "m", "Kunde");
         if(pr.rolls>0){
@@ -832,22 +850,27 @@ function computeTotals(c){
         }
       }
       // UI-Hint im Kunden-Tab (Auto-Feld)
-      try{
+      versuchen{
         if(typeof kPrivacyRollsAuto!=="undefined" && kPrivacyRollsAuto){
-          kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : "";
+          kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} rolls (at ${pr.rollLen}m)` : "";
         }
-      }catch(_){}
+      }fangen(_){}
     }
+    versuchen{
+      if(typeof kPrivacyRollsAuto!=="undefined" && kPrivacyRollsAuto){
+        kPrivacyRollsAuto.value = pr && pr.rolls ? `${pr.rolls} rolls (at ${pr.rollLen}m)` : "";
+      }
+    }fangen(_){}
     {
       const cc = computeConcrete(c);
       const unit=(c.concreteMode==="m3")?"m³":"Sack";
       const qty=(c.concreteMode==="m3")?cc.m3:cc.sacks;
       upsertMat(mats, "Beton", qty, unit, `Auto: ${cc.totalHoles} Löcher` + (cc.gateHoles?` (normal ${cc.normalHoles}, Torpfosten ${cc.gateHoles})`:` (normal ${cc.normalHoles})`));
     }
-    save();
+    speichern();
     refreshChefUI();
     toast("Übernommen","→ Chef‑Materialliste");
-    setTab("chef");
+    setTab("boss");
   });
 
   function customerWhatsText(p){
@@ -863,478 +886,7 @@ function computeTotals(c){
     if(p.objAddr) lines.push(`Objekt: ${p.objAddr}`);
     lines.push("");
     if(t.lengthM) lines.push(`• Länge: ${fmt(t.lengthM)} m`);
-    if(c.height) lines.push(`• Höhe: ${c.height} cm`);
-    if(c.system){
-      let sys=c.system;
-      if(c.system==="Holz" && c.woodType) sys += ` (${c.woodType})`;
-      if(c.system==="WPC" && c.wpcType) sys += ` (${c.wpcType})`;
-      lines.push(`• System: ${sys}`);
-    }
-    if(c.color) lines.push(`• Farbe: ${c.color}`);
-    if((c.privacy||"no")==="yes"){
-      const pr = computePrivacyRolls(c, t);
-      if(pr.lengthM>0){
-        const rl = pr.rollLen || 35;
-        const rollsTxt = pr.rolls ? `, ca. ${pr.rolls} Rollen à ${rl}m` : "";
-        lines.push(`• Sichtschutz: ja (${fmt(pr.lengthM)} m${rollsTxt})`);
-      }
-    }
-    const g=gateSummary(c);
-    if(g.total){
-      lines.push(`• Tore: ${gateTypeLabel(c.gateType)} (${g.total} Stk)`);
-      g.rows.forEach(r=>lines.push(`  - H${r.height} / B${r.widthCm}cm × ${r.qty}`));
-    }
-    const slopeTxt=({flat:"gerade",slope:"abschüssig",hang:"am Hang",steep:"steil"})[c.slopeType] || "gerade";
-    if(c.slopeType && c.slopeType!=="flat") lines.push(`• Gelände: ${slopeTxt}${(c.slopePct||"").trim()?(" ("+c.slopePct.trim()+"%)"):""}`);
-    if(clampInt(c.corners||0)>0) lines.push(`• Ecken: ${clampInt(c.corners||0)}`);
-    const cc = computeConcrete(c);
-    const cv = concreteDisplayValue(c, cc);
-    if(cv) lines.push(`• Beton: ${cv} ${(c.concreteMode==="m3")?"m³":"Sack"}`);
-    lines.push("");
-    if(t.lengthM){
-      lines.push("Material (Übersicht):");
-      lines.push(`- Matten/Elemente: ${t.panels} Stk`);
-      lines.push(`- Pfosten: ${t.posts} Stk`);
-      if(t.cornerPosts) lines.push(`- Eckpfosten: ${t.cornerPosts} Stk`);
-      lines.push(`- Pfostenleisten: ${t.postStrips} Stk`);
-      if((c.privacy||"no")==="yes"){
-        let pm = toNum(c.privacyLen, 0);
-        if(!pm && t.lengthM) pm = t.lengthM;
-        if(pm>0) lines.push(`- Sichtschutz: ${fmt(pm)} m`);
-      }
-      if(cv) lines.push(`- Beton: ${cv} ${(c.concreteMode==="m3")?"m³":"Sack"}`);
-    }
-    if(c.note){
-      lines.push("");
-      lines.push("Notiz:");
-      lines.push(c.note);
-    }
-    return lines.join("\n");
-}
-
-  async function shareText(text, title){
-    try{
-      if(navigator.share){ await navigator.share({title:title||"Zaunplaner", text}); return; }
-    }catch(e){}
-    try{ await navigator.clipboard.writeText(text); toast("Kopiert","in Zwischenablage"); }
-    catch(e){ prompt("Kopieren:", text); }
-  }
-
-  function openWhatsAppText(text){
-    const url = "https://wa.me/?text=" + encodeURIComponent(String(text||""));
-    try{
-      const w = window.open(url, "_blank");
-      return !!w;
-    }catch(_){ return false; }
-  }
-
-
-  // -------------------------------------------------------
-  // Fotos: ZIP-Download (Desktop-Fallback)
-  // - WhatsApp Desktop/Web erlaubt Anhänge nicht per Link -> wir liefern ein Fotos.zip
-  // -------------------------------------------------------
-  const _crcTable = (()=> {
-    const t = new Uint32Array(256);
-    for (let i=0;i<256;i++){
-      let c=i;
-      for (let k=0;k<8;k++) c = (c & 1) ? (0xEDB88320 ^ (c>>>1)) : (c>>>1);
-      t[i]=c>>>0;
-    }
-    return t;
-  })();
-  function crc32(u8){
-    let c = 0xFFFFFFFF;
-    for(let i=0;i<u8.length;i++){
-      c = _crcTable[(c ^ u8[i]) & 0xFF] ^ (c>>>8);
-    }
-    return (c ^ 0xFFFFFFFF)>>>0;
-  }
-  function u16(n){ const a=new Uint8Array(2); a[0]=n&255; a[1]=(n>>>8)&255; return a; }
-  function u32(n){ const a=new Uint8Array(4); a[0]=n&255; a[1]=(n>>>8)&255; a[2]=(n>>>16)&255; a[3]=(n>>>24)&255; return a; }
-  function concatU8(chunks){
-    let len=0; for(const c of chunks) len += c.length;
-    const out=new Uint8Array(len);
-    let off=0;
-    for(const c of chunks){ out.set(c, off); off += c.length; }
-    return out;
-  }
-  function encodeUtf8(s){ return new TextEncoder().encode(String(s||"")); }
-
-  function buildZipStore(files){
-    // files: [{name, dataU8, mtimeDate}]
-    const localParts=[];
-    const centralParts=[];
-    let offset=0;
-
-    const dtToDos = (d)=>{
-      const dt = d instanceof Date ? d : new Date();
-      const year = Math.max(1980, dt.getFullYear());
-      const month = dt.getMonth()+1;
-      const day = dt.getDate();
-      const hour = dt.getHours();
-      const min = dt.getMinutes();
-      const sec = Math.floor(dt.getSeconds()/2);
-      const dosTime = (hour<<11) | (min<<5) | sec;
-      const dosDate = ((year-1980)<<9) | (month<<5) | day;
-      return {dosTime, dosDate};
-    };
-
-    for(const f of files){
-      const name = encodeUtf8(f.name);
-      const data = f.dataU8;
-      const {dosTime, dosDate} = dtToDos(f.mtimeDate);
-      const crc = crc32(data);
-      const compSize = data.length;
-      const uncompSize = data.length;
-
-      // Local file header
-      // signature 0x04034b50
-      const lh = concatU8([
-        u32(0x04034b50),
-        u16(20),           // version needed
-        u16(0),            // flags
-        u16(0),            // compression (0=store)
-        u16(dosTime),
-        u16(dosDate),
-        u32(crc),
-        u32(compSize),
-        u32(uncompSize),
-        u16(name.length),
-        u16(0)             // extra len
-      ]);
-
-      localParts.push(lh, name, data);
-
-      // Central directory header
-      const ch = concatU8([
-        u32(0x02014b50),
-        u16(20),           // version made by
-        u16(20),           // version needed
-        u16(0),            // flags
-        u16(0),            // compression
-        u16(dosTime),
-        u16(dosDate),
-        u32(crc),
-        u32(compSize),
-        u32(uncompSize),
-        u16(name.length),
-        u16(0),            // extra len
-        u16(0),            // comment len
-        u16(0),            // disk start
-        u16(0),            // int attrs
-        u32(0),            // ext attrs
-        u32(offset)        // local header offset
-      ]);
-      centralParts.push(ch, name);
-
-      offset += lh.length + name.length + data.length;
-    }
-
-    const centralDir = concatU8(centralParts);
-    const localDir = concatU8(localParts);
-
-    const eocd = concatU8([
-      u32(0x06054b50),
-      u16(0), u16(0),
-      u16(files.length),
-      u16(files.length),
-      u32(centralDir.length),
-      u32(localDir.length),
-      u16(0)
-    ]);
-
-    return new Blob([localDir, centralDir, eocd], {type:"application/zip"});
-  }
-
-  async function downloadInternPhotosZip(p){
-    const ph = (p && p.chef && Array.isArray(p.chef.photos)) ? p.chef.photos : [];
-    if(!ph.length) return toast("Keine Fotos", "im Chef‑Tab gespeichert");
-    const files=[];
-    const max = Math.min(60, ph.length);
-    for(let i=0;i<max;i++){
-      const x = ph[i];
-      if(!x || !x.dataUrlSmall) continue;
-      const safeName = fileSafe(x.name || `Foto_${i+1}.jpg`);
-      const res = await fetch(x.dataUrlSmall);
-      const ab = await res.arrayBuffer();
-      files.push({name:safeName, dataU8:new Uint8Array(ab), mtimeDate:new Date()});
-    }
-    if(!files.length) return toast("Keine Fotos", "konnten gelesen werden");
-    const zipBlob = buildZipStore(files);
-    const url = URL.createObjectURL(zipBlob);
-    const a=document.createElement("a");
-    a.href=url;
-    a.download = fileSafe(`${(p && p.title) ? p.title : "Zaunplaner"}_Fotos.zip`);
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 1500);
-    toast("Download", "Fotos.zip erstellt");
-  }
-
-  async function dataUrlToFile(dataUrl, filename, mime){
-    const res = await fetch(dataUrl);
-    const blob = await res.blob();
-    const type = mime || blob.type || "image/jpeg";
-    return new File([blob], filename, { type });
-  }
-
-  async function shareInternWithPhotos(p){
-    const text = chefWhatsText(p);
-    const ph = (p && p.chef && Array.isArray(p.chef.photos)) ? p.chef.photos : [];
-
-    // Wenn Fotos vorhanden sind: iPhone/iPad Share-Sheet nutzen (Fotos teilen),
-    // ABER Text vorher in die Zwischenablage kopieren, weil WhatsApp bei "Text+Files"
-    // manchmal nicht in der Auswahl erscheint.
-    if(ph.length && navigator.share){
-      try{
-        const files = [];
-        const max = Math.min(6, ph.length);
-        for(let i=0;i<max;i++){
-          const x = ph[i];
-          if(!x || !x.dataUrlSmall) continue;
-          const rawName = x.name || `Foto_${i+1}.jpg`;
-          const safeName = String(rawName).replace(/[\\/:*?"<>|]+/g,"_");
-          // WhatsApp mag am zuverlässigsten echte JPG/PNG; type kommt aus x.type
-          files.push(await dataUrlToFile(x.dataUrlSmall, safeName, x.type));
-        }
-
-        if(files.length && (!navigator.canShare || navigator.canShare({ files }))){
-          // Text kopieren (dann in WhatsApp einfügen)
-          try{ await navigator.clipboard.writeText(text); }catch(_){}
-          await navigator.share({ title:"Intern Fotos", files });
-          toast("Fotos teilen", "Text ist kopiert → in WhatsApp einfügen");
-          return;
-        }
-      }catch(e){}
-    }
-
-    // Desktop/Browser-Fallback: WhatsApp Web mit Text öffnen (Fotos lassen sich dort nicht automatisch anhängen)
-    if(openWhatsAppText(text)){
-      try{ await navigator.clipboard.writeText(text); }catch(_){}
-      if(ph.length){
-        try{ await downloadInternPhotosZip(p); }catch(_){}
-        toast("WhatsApp geöffnet", "Text kopiert + Fotos.zip geladen (bitte manuell anhängen)");
-      }else{
-        toast("WhatsApp geöffnet", "Text kopiert");
-      }
-      return;
-    }
-
-    // Letzter Fallback
-    await shareText(text, "Intern");
-    if(ph.length) toast("Hinweis", "Fotos sind im Backup.json enthalten (WhatsApp‑Text ist kopiert).");
-  }
-
-  async function shareCustomerToWhatsApp(p){
-    const text = customerWhatsText(p);
-    if(openWhatsAppText(text)){
-      try{ await navigator.clipboard.writeText(text); }catch(_){}
-      return;
-    }
-    await shareText(text, "Kundenübersicht");
-  }
-
-
-  function downloadText(text, filename, mime="text/plain"){
-    const blob=new Blob([text], {type:mime+";charset=utf-8"});
-    const url=URL.createObjectURL(blob);
-    const a=document.createElement("a");
-    a.href=url; a.download=filename;
-    document.body.appendChild(a); a.click(); a.remove();
-    setTimeout(()=>URL.revokeObjectURL(url), 800);
-  }
-  function fileSafe(name){ return String(name||"Datei.txt").replace(/[\/:*?"<>|]+/g,"_").trim(); }
-
-  function callPhone(raw){
-    const cleaned = String(raw||"").trim();
-    if(!cleaned) { toast("Telefon fehlt","Bitte Telefonnummer eintragen"); return; }
-    const tel = cleaned.replace(/[^0-9+]/g,"");
-    try { window.location.href = `tel:${tel}`; }
-    catch(e){ toast("Kann nicht anrufen", String(e && e.message || e)); }
-  }
-
-  function sendEmail(rawEmail, subject="", body=""){
-    const email = String(rawEmail||"").trim();
-    if(!email){ toast("E‑Mail fehlt","Bitte E‑Mail eintragen"); return; }
-    const to = email.replace(/\s+/g,"");
-    const q = [];
-    if(subject) q.push("subject="+encodeURIComponent(subject));
-    if(body) q.push("body="+encodeURIComponent(body));
-    const href = "mailto:"+encodeURIComponent(to) + (q.length?("?"+q.join("&")):"");
-    try { window.location.href = href; }
-    catch(e){ toast("Kann keine E‑Mail öffnen", String(e && e.message || e)); }
-  }
-  function sendMailAny(subject="", body=""){
-    const q = [];
-    if(subject) q.push("subject="+encodeURIComponent(subject));
-    if(body) q.push("body="+encodeURIComponent(body));
-    const href = "mailto:" + (q.length?("?"+q.join("&")):"");
-    try { window.location.href = href; }
-    catch(e){ toast("Kann keine E‑Mail öffnen", String(e && e.message || e)); }
-  }
-
-
-
-  el("btnKWhats").addEventListener("click", async ()=>{ const p=currentProject(); if(!p) return; await shareCustomerToWhatsApp(p); });
-
-  if(el("btnKDown")){ el("btnKDown").addEventListener("click", ()=>{ const p=currentProject(); if(!p) return; downloadText(customerWhatsText(p), fileSafe(`${p.title}_Kunde.txt`)); }); }
-
-  if(el("btnKCall")){
-    el("btnKCall").addEventListener("click", ()=>{
-      const p=currentProject(); if(!p) return;
-      callPhone(p.phone || "");
-    });
-  }
-
-  if(el("btnKMail")){
-    el("btnKMail").addEventListener("click", ()=>{
-      const p=currentProject(); if(!p) return;
-      sendEmail(p.email || (el("kEmail")?el("kEmail").value:"") || "", `Zaunprojekt: ${p.title}`, customerWhatsText(p));
-    });
-  }
-
-  // Gate UI (Varianten)
-  const GATE_QTYS = Array.from({length:11}, (_,i)=>i); // 0..10
-  const GATE_HEIGHTS = [60,80,100,120,140,160,180,200];
-  function gateDefaultRow(c){
-    let h = Number(c.height)||160;
-    h = Math.round(h/20)*20;
-    h = Math.max(60, Math.min(200, h));
-    return {height:h, widthCm:125, qty:1};
-  }
-  function renderGateUI(){
-    const p=currentProject(); if(!p) return;
-    const c=p.customer; ensureGateDefaults(c);
-    if(!kGateType || !gateVariants || !gateRows) return;
-    kGateType.value = c.gateType || "none";
-    const active = (kGateType.value !== "none");
-    gateVariants.style.display = active ? "" : "none";
-    if(!active){ gateRows.innerHTML=""; return; }
-    if(c.gates.length===0) c.gates=[gateDefaultRow(c)];
-    gateRows.innerHTML="";
-    c.gates.forEach((g, idx)=>gateRows.appendChild(buildGateRow(g, idx)));
-  }
-  function buildGateRow(g, idx){
-    const row=document.createElement("div");
-    row.className="gateRow";
-    row.dataset.idx=String(idx);
-    row.innerHTML = `
-      <div>
-        <label>Tor‑Höhe</label>
-        <select class="gateH"></select>
-      </div>
-      <div>
-        <label>Breite (cm)</label>
-        <input class="gateW" list="gateWidthList" inputmode="numeric" placeholder="80 / 100 / 125 / 150 / 200" />
-      </div>
-      <div>
-        <label>Menge</label>
-        <select class="gateQ"></select>
-      </div>
-      <div class="gateAct">
-        <button class="btn bad" type="button" title="Variante löschen">✕</button>
-      </div>
-    `;
-    const selH=row.querySelector(".gateH");
-    fillHeights(selH, GATE_HEIGHTS);
-    const hh = Math.max(60, Math.min(200, Math.round((Number(g.height)||160)/20)*20));
-    selH.value=String(hh);
-
-    const inpW=row.querySelector(".gateW");
-    inpW.value=String(clampInt((g.widthCm!=null ? g.widthCm : (g.width!=null ? g.width : 125)), 50, 400));
-
-    const selQ=row.querySelector(".gateQ");
-    fillSelect(selQ, GATE_QTYS.map(String), String(clampInt((g.qty!=null ? g.qty : (g.count!=null ? g.count : 1)), 0, 20)));
-
-    const sync = ()=>{ persistGatesFromUI(); };
-    [selH, inpW, selQ].forEach(elm=>{
-      elm.addEventListener("input", sync);
-      elm.addEventListener("change", sync);
-    });
-
-    row.querySelector(".gateAct button").addEventListener("click", ()=>{
-      const p=currentProject(); if(!p) return;
-      const c=p.customer; ensureGateDefaults(c);
-      const i=Number(row.dataset.idx)||0;
-      c.gates.splice(i,1);
-      if(c.gates.length===0) c.gates=[gateDefaultRow(c)];
-      save(); renderGateUI(); refreshKpi();
-    });
-
-    return row;
-  }
-  function persistGatesFromUI(){
-    const p=currentProject(); if(!p) return;
-    const c=p.customer; ensureGateDefaults(c);
-    if(!gateRows) return;
-    const rows=[...gateRows.querySelectorAll(".gateRow")];
-    c.gates = rows.map(r=>{
-      const hEl = r.querySelector(".gateH");
-      const wEl = r.querySelector(".gateW");
-      const qEl = r.querySelector(".gateQ");
-      const h = Number(hEl && hEl.value) || 160;
-      const w = clampInt((wEl && wEl.value) || "", 50, 400);
-      const q = clampInt((qEl && qEl.value) || "", 0, 20);
-      return {height:h, widthCm:w, qty:q};
-    });
-    try{
-      const cc = computeConcrete(c);
-      c.concreteValue = concreteDisplayValue(c, cc);
-      c.concreteAuto = cc;
-    }catch(_){ }
-    save(); refreshKpi();
-  }
-
-  if(kGateType){
-    kGateType.addEventListener("change", ()=>{
-      const p=currentProject(); if(!p) return;
-      const c=p.customer; ensureGateDefaults(c);
-      c.gateType = kGateType.value || "none";
-      if(c.gateType==="none"){ c.gates=[]; }
-      save(); renderGateUI(); refreshKpi();
-    });
-  }
-  if(btnGateAdd){
-    btnGateAdd.addEventListener("click", ()=>{
-      const p=currentProject(); if(!p) return;
-      const c=p.customer; ensureGateDefaults(c);
-      if(c.gateType==="none") return;
-      c.gates.push(gateDefaultRow(c));
-      save(); renderGateUI(); refreshKpi();
-    });
-  }
-  if(btnGateClear){
-    btnGateClear.addEventListener("click", ()=>{
-      const p=currentProject(); if(!p) return;
-      const c=p.customer; ensureGateDefaults(c);
-      c.gates=[];
-      save(); renderGateUI(); refreshKpi();
-    });
-  }
-  
-
-  // -------------------------------------------------------
-  // Material: Auto-Sync (aus Kunde) + Sortierung
-  // -------------------------------------------------------
-  const MAT_ORDER = ["matten","pfosten","eckpfosten","leisten","beton","other"];
-  function matCategory(name){
-    const n = String(name||"").toLowerCase();
-    if(n.indexOf("beton")!==-1) return "beton";
-
-    // Matten/Elemente: Doppelstab, Alu, Holz, WPC, Tornado, Diagonal, Elektro
-    if(
-      n.indexOf("matte")!==-1 ||
-      n.indexOf("element")!==-1 ||
-      n.indexOf("doppelstab")!==-1 ||
-      n.indexOf(" alu")!==-1 || n.startsWith("alu") ||
-      n.indexOf(" wpc")!==-1 || n.startsWith("wpc") ||
-      n.indexOf(" holz")!==-1 || n.startsWith("holz") ||
-      n.indexOf("tornado")!==-1 ||
-      n.indexOf("diagonal")!==-1 ||
-      n.indexOf("elektrozaun")!==-1
-    ) return "matten";
-
+@@ -1338,116 +1433,139 @@ Funktion computeTotals(c){
     if(n.indexOf("eckpf")!==-1 || n.indexOf("eck pf")!==-1 || n.indexOf("eck-pf")!==-1) return "eckpfosten";
 
     // Leisten vor Pfosten (damit "Pfostenleisten" korrekt einsortiert wird)
@@ -1360,10 +912,11 @@ function computeTotals(c){
     if(!Array.isArray(p.chef.materials)) p.chef.materials = [];
     const c = p.customer;
     const t = computeTotals(c);
+    const segs = segmentList(c);
     let cc = null;
-    try{ cc = computeConcrete(c); }catch(_){}
+    try { cc = computeConcrete(c); } catch (_) {}
     const concreteQty = (c.concreteMode==="m3") ? (cc ? cc.m3 : 0) : (cc ? cc.sacks : 0);
-    const concreteUnit = (c.concreteMode==="m3") ? "m³" : "Sack";
+    const ConcreteUnit = (c.concreteMode==="m3") ? „m³“ : „Sack“;
     const auto = [
       // Matten/Elemente: Name soll wie im Chef‑Tab sein (z.B. "Alu‑Elemente 2,50m • 100 cm")
       { k:"auto_matten", label: sysLabel(c), qty:t.panels||0, unit:"Stk" },
@@ -1372,6 +925,34 @@ function computeTotals(c){
       { k:"auto_leisten", label:"Pfostenleisten", qty:t.postStrips||0, unit:"Stk" },
       { k:"auto_beton", label:"Beton", qty:concreteQty||0, unit:concreteUnit }
     ];
+    const auto = [];
+    if(segs.length){
+      for(const seg of segs){
+        const st = computeSegmentTotals(seg);
+        const prefix = seg.label ? `Abschnitt ${seg.label} – ` : "";
+        auto.push({ k:`auto_seg_${seg.label}_matten`, label: `${prefix}${sysLabelForSegment(seg)}`, qty:st.panels||0, unit:"Stk" });
+        auto.push({ k:`auto_seg_${seg.label}_pfosten`, label:`${prefix}Pfosten`, qty:st.posts||0, unit:"Stk" });
+        auto.push({ k:`auto_seg_${seg.label}_leisten`, label:`${prefix}Pfostenleisten`, qty:st.postStrips||0, unit:"Stk" });
+      }
+      if(t.cornerPosts) auto.push({ k:"auto_eckpfosten", label:"Eckpfosten", qty:t.cornerPosts||0, unit:"Stk" });
+      if(t.cornerPosts) auto.push({ k:"auto_leisten_ecke", label:"Pfostenleisten (Ecken)", qty:t.cornerPosts||0, unit:"Stk" });
+    } anders {
+      auto.push({ k:"auto_matten", label: sysLabel(c), qty:t.panels||0, unit:"Stk" });
+      auto.push({ k:"auto_pfosten", label:"Pfosten", qty:t.posts||0, unit:"Stk" });
+      auto.push({ k:"auto_eckpfosten", label:"Eckpfosten", qty:t.cornerPosts||0, unit:"Stk" });
+      auto.push({ k:"auto_leisten", label:"Pfostenleisten", qty:t.postStrips||0, unit:"Stk" });
+    }
+    const pr = computePrivacyRolls(c, t);
+    if(segs.length && pr && Array.isArray(pr.segments)){
+      for(const det of pr.segments){
+        auto.push({ k:`auto_privlen_${det.label||"_"}`, label:`Sichtschutz Abschnitt ${det.label||""}`, qty:det.lengthM||0, unit:"m", note: det.panels ? `${det.panels} Felder • ${det.height||""} cm` : "" });
+        if(det.rolls) auto.push({ k:`auto_privrolls_${det.label||"_"}`, label:`Sichtschutz‑Rollen Abschnitt ${det.label||""}`, qty:det.rolls||0, unit:"Rolle", note:`à ${det.rollLen||35}m • ${det.stripsPerPanel||0}×2,5m je Feld • gesamt ${fmt(det.totalStripM||0)}m` });
+      }
+    } else if((c.privacy||"no")==="yes"){
+      if(pr.lengthM>0) auto.push({ k:"auto_privlen", label:"Sichtschutz (Länge)", qty:pr.lengthM||0, unit:"m" });
+      if(pr.rolls>0) auto.push({ k:"auto_privrolls", label:"Sichtschutz‑Rollen", qty:pr.rolls||0, unit:"Rolle", note:`à ${pr.rollLen||35}m • ${pr.stripsPerPanel||0}×2,5m je Feld • gesamt ${fmt(pr.totalStripM||0)}m` });
+    }
+    auto.push({ k:"auto_beton", label:"Beton", qty:concreteQty||0, unit:concreteUnit });
     const mats = p.chef.materials;
 
     function norm(s){ return String(s||"").toLowerCase().replace(/[^a-z0-9äöüß]+/g," ").trim(); }
@@ -1385,11 +966,11 @@ function computeTotals(c){
     for(let i=0;i<auto.length;i++){
       const a=auto[i];
       const want = Number(a.qty)||0;
-      let it = byKey[a.k];
+      let it = byKey[ak];
 
       if(!it){
         // Spezial: Matten/Elemente möglichst mit bestehender Zeile zusammenführen
-        if(a.k==="auto_matten"){
+        if(ak==="auto_matten"){
           for(let j=0;j<mats.length;j++){
             const x=mats[j];
             if(!x || x.autoKey) continue;
@@ -1400,7 +981,7 @@ function computeTotals(c){
 
       if(!it){
         const wantNames = [a.label];
-        if(a.k==="auto_matten"){ wantNames.push("Matten","Matten/Elemente","Elemente"); }
+        if(ak==="auto_matten"){ wantNames.push("Matten","Matten/Elemente","Elemente"); }
         if(a.k==="auto_leisten") wantNames.push("Leisten");
         for(let j=0;j<mats.length;j++){
           const x=mats[j];
@@ -1413,12 +994,14 @@ function computeTotals(c){
         }
       }
 
+      const note = a.note || "";
       if(!it){
-        if(!want) continue;
-        mats.push({ id: uid(), name: a.label, qty: want, unit: a.unit, note:"", autoKey:a.k, override:false });
-      } else {
-        it.autoKey = a.k;
-        if(typeof it.override !== "boolean") it.override = ((it.qty!=="" && it.qty!==null && it.qty!==undefined) && (Number(it.qty||0)!==0) && (Number(it.qty)!=want));
+        Falls nicht gewünscht, fortfahren;
+        mats.push({ id: uid(), name: a.label, qty: want, unit: a.unit, note :"" , autoKey:ak, override:false });
+        mats.push({ id: uid(), name: a.label, qty: want, unit: a.unit, note, autoKey:if, override:false });
+      } anders {
+        it.autoKey = ak;
+        if(typeof it.override !== "boolean") it.override = ((it.qty!=="" && it.qty!==null && it.qty!==undefined) && (Number(it.qty||0)!==0) && (Number(it.qty)!==want));
         it.autoQty = want;
         it.autoUnit = a.unit;
         if(!it.override){
@@ -1426,6 +1009,7 @@ function computeTotals(c){
           it.name = a.label;
           it.qty = want;
           it.unit = a.unit;
+          if(note) it.note = note;
         }
       }
     }
@@ -1433,16 +1017,16 @@ function computeTotals(c){
     // Auto-Zeilen entfernen, wenn sie 0 sind und nicht überschrieben wurden
     p.chef.materials = mats.filter(it=>{
       if(it && it.autoKey && !it.override && (Number(it.qty)||0)===0) return false;
-      return true;
+      gib true zurück;
     });
 
-    // de-dupe autoKey
+    // AutoKey de-dupe
     const seen = {};
     p.chef.materials = p.chef.materials.filter(it=>{
       if(!it || !it.autoKey) return true;
       if(seen[it.autoKey]) return false;
       seen[it.autoKey]=true;
-      return true;
+      gib true zurück;
     });
 
     // Extra: doppelte Matten/Elemente‑Zeilen entfernen (Alt + Auto), wenn sie offensichtlich identisch sind
@@ -1450,707 +1034,25 @@ function computeTotals(c){
     if(mAuto){
       const autoQtyNum = Number(mAuto.qty)||0;
       const autoName = norm(mAuto.name);
-      const dupNames = { "matten":1, "matten elemente":1, "matten elemente gesamt":1, "elemente":1 };
-      p.chef.materials = p.chef.materials.filter(x=>{
-        if(!x || x===mAuto) return true;
-        if(x.autoKey) return true;
-        if(matCategory(x.name)!=="matten") return true;
-        const q = Number(x.qty)||0;
-        const nn = norm(x.name);
-        if(nn===autoName && q===autoQtyNum) return false;
-        if(dupNames[nn] && q===autoQtyNum) return false;
-        return true;
-      });
-    }
-  }
-
-// Chef
-  const cBagger=el("cBagger"), cRamme=el("cRamme"), cHaenger=el("cHaenger"), cHoursPlanned=el("cHoursPlanned"), cStatus=el("cStatus"), cNote=el("cNote");
-  const matPill=el("matPill"), matList=el("matList"), mName=el("mName"), mQty=el("mQty"), mUnit=el("mUnit"), mNote=el("mNote");
-  const photoGrid=el("photoGrid"), photoPill=el("photoPill");
-
-  function persistChef(){
-    const p=currentProject(); if(!p) return;
-    p.chef.bagger=cBagger.value; p.chef.ramme=cRamme.value; p.chef.handbohr=(el("cHandbohr")?el("cHandbohr").value:"no"); p.chef.schubkarre=(el("cSchubkarre")?el("cSchubkarre").value:"no"); p.chef.haenger=cHaenger.value;
-    if(cHoursPlanned) p.chef.hoursPlanned=(cHoursPlanned.value||"").trim();
-    p.plannedHours = (p.chef.hoursPlanned||"").trim();
-    if(cStatus) p.chef.status=(cStatus.value||"draft");
-    p.chef.note=(cNote.value||"").trim();
-    save(); refreshChefPill();
-  }
-  [cBagger,cRamme,cHaenger,cNote].forEach(x=>{ x.addEventListener("change", persistChef); x.addEventListener("input", persistChef); });
-
-  function refreshChefPill(){
-    const p=currentProject(); if(!p) return;
-    const ok = (p.chef.materials||[]).length || (p.chef.note||"").trim() || (p.chef.photos||[]).length;
-    el("chefPill").textContent = ok ? "gesetzt" : "leer";
-    el("chefPill").className = "pill " + (ok ? "good" : "");
-  }
-
-  function refreshChefUI(){
-    const p=currentProject();
-    el("chefTitle").textContent = p ? `🛠️ Chef/Team: ${p.title}` : "🛠️ Chef / Team";
-    if(!p) return;
-    cBagger.value=p.chef.bagger||"no";
-    cRamme.value=p.chef.ramme||"no";
-    if(el("cHandbohr")) el("cHandbohr").value=p.chef.handbohr||"no";
-    if(el("cSchubkarre")) el("cSchubkarre").value=p.chef.schubkarre||"no";
-    cHaenger.value=p.chef.haenger||"no";
-    if(cHoursPlanned) cHoursPlanned.value = (p.chef.hoursPlanned||p.plannedHours||"");
-    if(cStatus) cStatus.value = (p.chef.status||"draft");
-    if(el("cCustomerNote")) el("cCustomerNote").value = (p.customer && p.customer.note) ? p.customer.note : "";
-    cNote.value=p.chef.note||"";
-    ensureChefAutoMaterials(p);
-    renderMaterials(); renderPhotos(); refreshChefPill();
-  }
-
-  el("btnAddMat").addEventListener("click", ()=>{
-    const p=currentProject(); if(!p) return;
-    const sel=el("mName");
-    const custom=el("mNameCustom");
-    let name = (sel && sel.value) ? String(sel.value).trim() : "";
-    if(name==="__custom__"){
-      name = custom ? String(custom.value||"").trim() : "";
-    }
-    const qty = toNum(mQty.value,0);
-    const unit = mUnit.value || "Stk";
-    if(!name){ toast("Fehlt", "Material auswählen/eingeben"); return; }
-    const item={ id: uid(), name, qty, unit, note:"", override:true };
-    if(!p.chef) p.chef = { bagger:"no", ramme:"no", handbohr:"no", schubkarre:"no", haenger:"no", note:"", materials:[], photos:[] };
-    if(!Array.isArray(p.chef.materials)) p.chef.materials=[];
-    p.chef.materials.push(item);
-    // reset
-    if(sel) sel.value="Doppelstabmatte";
-    if(custom){ custom.value=""; custom.style.display="none"; }
-    mQty.value="";
-    save(); renderMaterials(); refreshChefPill(); toast("Hinzugefügt", name);
-  });
-
-  // Toggle Freitext-Eingabe bei Materialauswahl
-  if(el("mName") && el("mNameCustom")){
-    el("mName").addEventListener("change", ()=>{
-      const v=el("mName").value;
-      el("mNameCustom").style.display = (v==="__custom__") ? "block" : "none";
-    });
-  }
-
-  el("btnClearMat").addEventListener("click", ()=>{
-    const p=currentProject(); if(!p) return;
-    if(!confirm("Interne Materialliste wirklich leeren?")) return;
-    p.chef.materials=[]; save(); renderMaterials(); refreshChefPill();
-  });
-
-  function renderMaterials(){
-    const p=currentProject(); if(!p) return;
-    const list=p.chef.materials||[];
-    const view = sortMaterials(list);
-    matPill.textContent=String(list.length);
-    if(!view.length){
-      matList.innerHTML='<div class="hint">(noch leer)</div>';
-      return;
-    }
-
-    matList.innerHTML = `
-      <details open>
-        <summary>
-          <span>Materialliste</span>
-          <span class="pill">${view.length}</span>
-        </summary>
-        <div class="matRows"></div>
-      </details>
-    `;
-    const rows = matList.querySelector(".matRows");
-    view.forEach(it=>{
-      const row=document.createElement("div");
-      row.className="matRow";
-      row.innerHTML = `
-        <div class="matName">${escapeHtml(it.name)}</div>
-        <input type="text" inputmode="decimal" value="${escapeHtml(String(it.qty??""))}" />
-        <select>
-          <option${it.unit==="Stk"?" selected":""}>Stk</option>
-          <option${it.unit==="m"?" selected":""}>m</option>
-          <option${it.unit==="m²"?" selected":""}>m²</option>
-          <option${it.unit==="Sack"?" selected":""}>Sack</option>
-          <option${it.unit==="m³"?" selected":""}>m³</option>
-          <option${it.unit==="Paket"?" selected":""}>Paket</option>
-        </select>
-        <button class="btn small bad" type="button" title="löschen">✕</button>
-      `;
-      const inpQty=row.querySelector("input");
-      const selUnit=row.querySelector("select");
-      const btnDel=row.querySelector("button");
-
-      // iOS/PWA Safety: falls DOM anders gerendert wurde, nicht crashen
-      if(!inpQty || !selUnit || !btnDel){
-        rows.appendChild(row);
-        return;
-      }
-
-      const commit=()=>{
-        const p2=currentProject(); if(!p2) return;
-        const tgt=(p2.chef.materials||[]).find(x=>x.id===it.id); if(!tgt) return;
-        tgt.qty = toNum(inpQty.value,0);
-        tgt.unit = selUnit.value;
-        tgt.override = true;
-        save(); refreshChefPill();
-      };
-      inpQty.addEventListener("change", commit);
-      selUnit.addEventListener("change", commit);
-      btnDel.addEventListener("click", ()=>{
-        const p2=currentProject(); if(!p2) return;
-        p2.chef.materials=(p2.chef.materials||[]).filter(x=>x.id!==it.id);
-        save(); renderMaterials(); refreshChefPill();
-      });
-      rows.appendChild(row);
-    });
-  }
-
-  function compressImageToDataUrl(file, maxSide=1280, quality=0.72){
-    return new Promise((resolve,reject)=>{
-      const fr=new FileReader();
-      fr.onload=()=>{
-        const img=new Image();
-        img.onload=()=>{
-          const w=img.width, h=img.height;
-          const scale=Math.min(1, maxSide/Math.max(w,h));
-          const nw=Math.round(w*scale), nh=Math.round(h*scale);
-          const cv=document.createElement("canvas");
-          cv.width=nw; cv.height=nh;
-          const ctx=cv.getContext("2d");
-          ctx.drawImage(img,0,0,nw,nh);
-          resolve(cv.toDataURL("image/jpeg", quality));
-        };
-        img.onerror=reject;
-        img.src=fr.result;
-      };
-      fr.onerror=reject;
-      fr.readAsDataURL(file);
-    });
-  }
-
-  function renderPhotos(){
-    const p=currentProject(); if(!p) return;
-    const ph=p.chef.photos||[];
-    photoPill.textContent=String(ph.length);
-    photoGrid.innerHTML="";
-    const max=6;
-    for(let i=0;i<max;i++){
-      const slot=ph[i];
-      const div=document.createElement("div");
-      div.className="ph";
-      if(slot){
-        div.innerHTML = `
-          <div class="cardTitle"><b>Foto ${i+1}</b><button class="btn small bad" type="button">✕</button></div>
-          <div class="meta">${escapeHtml(slot.name||"")}</div>
-          <div style="margin-top:8px;"><img src="${slot.dataUrlSmall}" alt="Foto"/></div>
-        `;
-        div.querySelector("button").addEventListener("click", ()=>{
-          const p2=currentProject(); if(!p2) return;
-          p2.chef.photos.splice(i,1);
-          save(); renderPhotos(); refreshChefPill();
-        });
-      } else {
-        div.innerHTML = `
-          <b>+ Foto hinzufügen</b>
-          <div class="meta">Tippen → Kamera / Mediathek</div>
-          <div style="margin-top:8px;"><input type="file" accept="image/*" capture="environment"/></div>
-        `;
-        const input=div.querySelector("input");
-        input.addEventListener("change", async ()=>{
-          const file=input.files && input.files[0];
-          if(!file) return;
-          const dataUrlSmall = await compressImageToDataUrl(file, 1280, 0.72);
-          const p2=currentProject(); if(!p2) return;
-          p2.chef.photos=p2.chef.photos||[];
-          p2.chef.photos.push({id:uid(), name:file.name||"foto.jpg", type:file.type||"image/jpeg", dataUrlSmall});
-          save(); renderPhotos(); refreshChefPill(); toast("Foto gespeichert");
-        });
-      }
-      photoGrid.appendChild(div);
-    }
-  }
-
-  function chefWhatsText(p){
-    const lines=[];
-    lines.push(`INTERN – ${p.title}`);
-    if(p.plannedDate) lines.push(`Ausführung: ${p.plannedDate}`);
-    if(p.phone) lines.push(`Tel: ${p.phone}`);
-    if(p.addr) lines.push(`Kunde: ${p.addr}`);
-    if(p.objAddr) lines.push(`Objekt: ${p.objAddr}`);
-    const hp = (p.chef && (p.chef.hoursPlanned||"").trim()) ? (p.chef.hoursPlanned||"").trim() : ((p.plannedHours||"").trim());
-    if(hp) lines.push(`Geplante Stunden: ${hp}`);
-    if(p.chef && (p.chef.status||"") && p.chef.status!=="draft") lines.push(`Status: ${p.chef.status}`);
-    lines.push("");
-    const custNote = (p.customer && (p.customer.note||"").trim()) ? p.customer.note.trim() : "";
-    if(custNote){
-      lines.push("Kunden‑Notiz:");
-      lines.push(custNote);
-      lines.push("");
-    }
-    const eq=[];
-    if(p.chef.bagger==="yes") eq.push("Bagger");
-    if(p.chef.ramme==="yes") eq.push("Ramme");
-    if(p.chef.haenger==="yes") eq.push("Hänger");
-    if(p.chef.handbohr==="yes") eq.push("Handbohrgerät");
-    if(p.chef.schubkarre==="yes") eq.push("Schubkarre");
-    if(eq.length){
-      lines.push("Geräte:");
-      eq.forEach(x=>lines.push(`- ${x}`));
-      lines.push("");
-    }
-    const mats=sortMaterials(p.chef.materials||[]);
-    lines.push("Material (intern):");
-    if(!mats.length) lines.push("(leer)");
-    else mats.forEach(it=>{
-      const q=fmt(toNum(it.qty,0));
-      const u=it.unit||"Stk";
-      const note=(it.note||"").trim();
-      lines.push(`- ${it.name}: ${q} ${u}${note?(" ("+note+")"):""}`);
-    });
-    const ph=p.chef.photos||[];
-    if(ph.length){ lines.push(""); lines.push(`Fotos: ${ph.length} (im Backup.json)`); }
-    if((p.chef.note||"").trim()){
-      lines.push("");
-      lines.push("Hinweise:");
-      lines.push(p.chef.note.trim());
-    }
-    return lines.join("\n");
-}
-
-  el("btnCWhats").addEventListener("click", async ()=>{
-    const p=currentProject(); if(!p) return;
-    const issues=validateProject(p); if(!showIssues(issues)) return;
-    await shareInternWithPhotos(p);
-  });
-  // WhatsApp Intern – 2-Step Buttons (empfohlen)
-  const btnCWhatsText = el("btnCWhatsText");
-  const btnCWhatsFotos = el("btnCWhatsFotos");
-
-  if(btnCWhatsText) btnCWhatsText.addEventListener("click", async ()=>{
-    const p=currentProject(); const issues=validateProject(p); if(!showIssues(issues)) return;
-    const text = chefWhatsText(p);
-    // bevorzugt WhatsApp-Web/WhatsApp-App Text öffnen, parallel Text kopieren
-    try{ await navigator.clipboard.writeText(text); }catch(_){}
-    if(openWhatsAppText(text)){
-      toast("WhatsApp", "Intern-Text kopiert ✅");
-      return;
-    }
-    await shareText(text, "Intern");
-  });
-
-  if(btnCWhatsFotos) btnCWhatsFotos.addEventListener("click", async ()=>{
-    const p=currentProject(); const issues=validateProject(p); if(!showIssues(issues)) return;
-    const ph = (p && p.chef && Array.isArray(p.chef.photos)) ? p.chef.photos : [];
-    if(!ph.length){
-      toast("Keine Fotos", "Im Chef/Team Tab erst Fotos hinzufügen");
-      return;
-    }
-    // iOS Share-Sheet: teile nur Fotos (Text ist bereits über "Intern Text" gedacht)
-    if(navigator.share){
-      try{
-        const files=[];
-        const max=Math.min(6, ph.length);
-        for(let i=0;i<max;i++){
-          const x=ph[i];
-          if(!x || !x.dataUrlSmall) continue;
-          const rawName=x.name||`Foto_${i+1}.jpg`;
-          const safeName=String(rawName).replace(/[\/:*?"<>|]+/g,"_");
-          files.push(await dataUrlToFile(x.dataUrlSmall, safeName, x.type));
-        }
-        if(files.length && (!navigator.canShare || navigator.canShare({files}))){
-          await navigator.share({ title:"Intern Fotos", files });
-          toast("Fotos teilen", "✅");
-          return;
-        }
-      }catch(e){}
-    }
-    // Fallback: ZIP laden
-    try{ await downloadInternPhotosZip(p); }catch(_){}
-    toast("Fotos.zip", "geladen – bitte in WhatsApp manuell anhängen");
-  });
-
-  // Maps Link senden (Google Maps)
-  const btnCMaps = el("btnCMaps");
-  if(btnCMaps) btnCMaps.addEventListener("click", async ()=>{
-    const p=currentProject(); if(!p) return;
-    const link = mapsLink(p);
-    if(!link){ toast("Maps", "Keine Adresse/Objektadresse hinterlegt."); return; }
-    try{ await navigator.clipboard.writeText(link); }catch(_){}
-    if(openWhatsAppText("📍 Standort: "+link)){
-      toast("Maps", "Link kopiert ✅");
-      return;
-    }
-    await shareText("📍 Standort: "+link, "Maps");
-  });
-
-
-  el("btnCDown").addEventListener("click", ()=>{ const p=currentProject(); if(!p) return; downloadText(chefWhatsText(p), fileSafe(`${p.title}_Intern.txt`)); });
-
-  // Intern: Fotos.zip (Desktop-Fallback) + E-Mail
-  if(el("btnCZip")){
-    el("btnCZip").addEventListener("click", async ()=>{
-      const p=currentProject(); if(!p) return;
-      await downloadInternPhotosZip(p);
-    });
-  }
-  if(el("btnCMail")){
-    el("btnCMail").addEventListener("click", async ()=>{
-      const p=currentProject(); if(!p) return;
-      const text = chefWhatsText(p);
-      try{ await navigator.clipboard.writeText(text); }catch(_){}
-      // Hinweis: Mail-Clients erlauben Anhänge nicht per Script -> Nutzer hängt Fotos.zip manuell an
-      sendMailAny(`Intern – ${p.title}`, text + "\n\n(Hinweis: Text wurde in die Zwischenablage kopiert. Bitte Fotos.zip manuell anhängen.)");
-    });
-  }
-
-  // Backup
-  const btnBackup = el("btnBackup");
-  if(btnBackup) btnBackup.addEventListener("click", ()=>{
-    if(!state.meta) state.meta = {};
-    state.meta.lastBackupAt = nowISO();
-    save();
-    const data={ exportedAt: nowISO(), tool:"Zaunteam Zaunplaner", version:APP_VERSION, state };
-    downloadText(JSON.stringify(data,null,2), "Zaunplaner_Backup.json", "application/json");
-  });
-
-  // JSON Import (für Handy ↔ PC Transfer)
-  const btnImportJson = el("btnImportJson");
-  const fileImportJson = el("fileImportJson");
-
-  function normalizeImportedState(raw){
-    // akzeptiert entweder {state:...} oder direkt den state
-    const s = (raw && raw.state) ? raw.state : raw;
-    if(!s || typeof s!=="object") return null;
-
-    // Minimalstruktur
-    const out = {
-      version: APP_VERSION,
-      projects: Array.isArray(s.projects) ? s.projects : [],
-      selectedProjectId: s.selectedProjectId || null,
-      ui: (s.ui && typeof s.ui==="object") ? s.ui : {},
-    };
-
-    // Bewahre optionale Felder, falls vorhanden
-    for(const k of ["notes","settings","meta"]){
-      if(s[k]!==undefined) out[k]=s[k];
-    }
-    return out;
-  }
-
-  function doImportJsonText(txt){
-    let parsed=null;
-    try{ parsed = JSON.parse(txt); }catch(e){ toast("❌ Import fehlgeschlagen: keine gültige JSON"); return; }
-    const next = normalizeImportedState(parsed);
-    if(!next){ toast("❌ Import fehlgeschlagen: Datenformat unbekannt"); return; }
-
-    // Safety: vorher Backup in lastgood schreiben
-    try{ localStorage.setItem(STORAGE_KEY+"_lastgood", JSON.stringify(state)); }catch(e){}
-
-    // Übernehmen
-    state = next;
-
-    // Valid selectedProjectId
-    if(state.selectedProjectId && !state.projects.find(p=>p.id===state.selectedProjectId)){
-      state.selectedProjectId = state.projects[0]?.id || null;
-    }
-
-    save();
-    try{ refreshAll(); }catch(e){}
-    toast("✅ Import OK – Daten übernommen");
-  }
-
-  if(btnImportJson && fileImportJson){
-    btnImportJson.addEventListener("click", ()=> fileImportJson.click());
-    fileImportJson.addEventListener("change", async (ev)=>{
-      const f = ev.target.files && ev.target.files[0];
-      if(!f) return;
-      try{
-        const txt = await f.text();
-        doImportJsonText(txt);
-      }catch(e){
-        toast("❌ Import fehlgeschlagen");
-      } finally {
-        try{ ev.target.value=""; }catch(e){}
-      }
-    });
-  }
-
-  el("btnCSV").addEventListener("click", ()=>{
-    const p=currentProject(); if(!p) return toast("Kein Kunde");
-    const rows=[["Kundenname","Datum","Material","Menge","Einheit","Notiz"]].concat((p.chef.materials||[]).map(it=>[p.title,p.plannedDate||"",it.name||"",String((it.qty!=null)?it.qty:""),it.unit||"",it.note||""]));
-    const csv=rows.map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(";")).join("\n");
-    downloadText(csv, fileSafe(`${p.title}_Material.csv`), "text/csv");
-  });
-  el("btnReset").addEventListener("click", ()=>{
-    if(!confirm("Wirklich ALLE lokalen Daten löschen?")) return;
-    localStorage.removeItem(STORAGE_KEY);
-    LEGACY_KEYS.forEach(k=>localStorage.removeItem(k));
-    location.reload();
-  });
-
-  
-    const kStreet=el("kStreet"), kZip=el("kZip"), kCity=el("kCity"), kCountry=el("kCountry"), kObjAddr=el("kObjAddr");
-    const addrBar=el("addrBar");
-    const segList=el("segList"), segAddLabel=el("segAddLabel"), btnSegAdd=el("btnSegAdd"), btnSegCollapseAll=el("btnSegCollapseAll"), btnSegExpandAll=el("btnSegExpandAll");
-function refreshCustomerUI(){
-    const p=currentProject(); if(!p) return;
-    const c=p.customer;
-    el("kundeTitle").textContent = `👤 Kunde: ${p.title}`;
-    if(kCreated) kCreated.value = dateFromIso(p.createdAt||"");
-    if(kPlanned) kPlanned.value = p.plannedDate || "";
-    if(kPhone) kPhone.value = p.phone || "";
-    if(kEmail) kEmail.value = p.email || "";
-    kLen.value=c.length||"";
-    kHeight.value=String(c.height||160);
-    kSystem.value=c.system||"Doppelstab";
-    kColor.value=c.color||"Anthrazit (RAL 7016)";
-    if(kPrivacy) kPrivacy.value = c.privacy || "no";
-    if(kPrivacyLen) kPrivacyLen.value = c.privacyLen || "";
-    if(typeof kPrivacyRoll!=="undefined" && kPrivacyRoll) kPrivacyRoll.value = String(c.privacyRollLen || 35);
-    try{
-      if(typeof kPrivacyRollsAuto!=="undefined" && kPrivacyRollsAuto){
-        const pr = computePrivacyRolls(c, computeTotals(c));
-        kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : "";
-      }
-    }catch(_){ }
-    kWood.value=(c.system==="Holz") ? (c.woodType||"—") : "—";
-    kWpc.value=(c.system==="WPC") ? (c.wpcType||"—") : "—";
-    kSlopeType.value=c.slopeType||"flat";
-    kSlopePct.value=c.slopePct||"";
-    setCorners(c.corners||0);
-    kConcreteMode.value=c.concreteMode||"sacks";
-    updateConcretePlaceholder();
-    renderConcreteAutoUI(c);
-    kNote.value=c.note||"";
-    ensureGateDefaults(c);
-    renderGateUI();
-    toggleMaterialDependent();
-    togglePrivacyDependent();
-    refreshKpi();
-  
-    // Adresse anzeigen + speichern
-    function updateAddrBar(){
-      if(!p) return;
-      p.addrStreet = (kStreet ? (kStreet.value||"") : (p.addrStreet||"")).trim();
-      p.addrZip = (kZip ? (kZip.value||"") : (p.addrZip||"")).trim();
-      p.addrCity = (kCity ? (kCity.value||"") : (p.addrCity||"")).trim();
-      p.addrCountry = (kCountry ? (kCountry.value||"DE") : (p.addrCountry||"DE")).trim() || "DE";
-      if(kObjAddr) p.objAddr = (kObjAddr.value||"").trim();
-
-      // legacy combined fields
-      p.addr = fullCustomerAddress(p);
-      if(addrBar) addrBar.textContent = "Adresse: " + (p.addr || "—");
-    }
-
-    async function tryZipAutofill(){
-      if(!p || !kZip || !kCity) return;
-      const zip = String(kZip.value||"").trim();
-      if(!/^[0-9]{5}$/.test(zip)) return;
-      if(!navigator.onLine) return; // offline -> manuell
-      // nur wenn ort leer ist oder sehr kurz
-      const cur = String(kCity.value||"").trim();
-      if(cur && cur.length>=2) return;
-      const city = await lookupCityByZip(zip);
-      if(city){
-        kCity.value = city;
-        updateAddrBar();
-        save();
-        toast("Ort ergänzt", `${zip} → ${city}`);
-      }
-    }
-
-    // Segmente (A,B,C…)
-    function ensureSegments(){
-      p.customer = p.customer || {};
-      if(!Array.isArray(p.customer.segments) || !p.customer.segments.length){
-        // migrate from legacy
-        p.customer.segments = [{
-          id: uid(),
-          label: "A",
-          length: p.customer.length || "",
-          height: p.customer.height || 160,
-          system: p.customer.system || "Doppelstab",
-          color: p.customer.color || "Anthrazit (RAL 7016)",
-          privacy: p.customer.privacy || "no"
-        }];
-      }
-    }
-
-    function totalLengthFromSegments(){
-      const segs = (p.customer && Array.isArray(p.customer.segments)) ? p.customer.segments : [];
-      let sum = 0;
-      for(const s of segs){
-        sum += Math.max(0, toNum(s.length, 0));
-      }
-      return sum;
-    }
-
-    function renderSegments(){
-      if(!segList) return;
-      ensureSegments();
-      const segs = p.customer.segments;
-
-      // label options for add
-      if(segAddLabel && !segAddLabel.dataset.ready){
-        const used = new Set();
-        const labels = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-        segAddLabel.innerHTML = labels.slice(0,10).map(x=>`<option value="${x}">${x}</option>`).join("");
-        segAddLabel.dataset.ready="1";
-      }
-
-      segList.innerHTML = "";
-      for(const s of segs){
-        const sum = `Abschnitt ${escapeHtml(s.label||"")}`;
-        const len = toNum(s.length,0);
-        const ht = s.height || "";
-        const sys = s.system || "";
-        const col = s.color || "";
-        const isPriv = (s.privacy||"no")==="yes";
-        const det = document.createElement("details");
-        det.open = true;
-        det.className = "card";
-        det.style.marginTop="8px";
-        det.innerHTML = `
-          <summary style="cursor:pointer; user-select:none;">
-            <b>${sum}</b> — ${len?len+" m":"—"} • ${ht?ht+" cm":"—"} • ${escapeHtml(sys)} • ${escapeHtml(col)} ${isPriv?"• Sichtschutz":""}
-          </summary>
-
-          <div class="grid3" style="margin-top:10px;">
-            <div>
-              <label>Länge (m)</label>
-              <input data-k="len" inputmode="decimal" value="${s.length||""}" placeholder="z.B. 12,5" />
-            </div>
-            <div>
-              <label>Höhe</label>
-              <select data-k="height"></select>
-            </div>
-            <div>
-              <label>System</label>
-              <select data-k="system">
-                <option>Doppelstab</option>
-                <option>Einfachstab</option>
-                <option>Diagonalgeflecht</option>
-                <option>Tornado</option>
-                <option>Elektrozaun</option>
-              </select>
-            </div>
-            <div style="grid-column: span 2;">
-              <label>Farbe</label>
-              <input data-k="color" value="${s.color||""}" placeholder="z.B. Anthrazit (RAL 7016)" />
-            </div>
-            <div>
-              <label>Sichtschutz</label>
-              <select data-k="privacy">
-                <option value="no">Nein</option>
-                <option value="yes">Ja</option>
-              </select>
-            </div>
-          </div>
-
-          <div class="row" style="margin-top:10px; gap:8px;">
-            <button data-act="del" class="btn red" type="button">Löschen</button>
-          </div>
-        `;
-
-        // height options
-        const selH = det.querySelector('select[data-k="height"]');
-        if(selH){
-          selH.innerHTML = "";
-          for(let h=60; h<=220; h+=20){
-            const o=document.createElement("option");
-            o.value=String(h); o.textContent=`${h} cm`;
-            selH.appendChild(o);
-          }
-          selH.value=String(s.height||160);
-        }
-        // system select
-        const selS = det.querySelector('select[data-k="system"]');
-        if(selS) selS.value = String(s.system||"Doppelstab");
-        const selP = det.querySelector('select[data-k="privacy"]');
-        if(selP) selP.value = String(s.privacy||"no");
-
-        const commit = ()=>{
-          s.length = (det.querySelector('input[data-k="len"]').value||"").trim();
-          s.height = Number(det.querySelector('select[data-k="height"]').value||160);
-          s.system = String(det.querySelector('select[data-k="system"]').value||"Doppelstab");
-          s.color = (det.querySelector('input[data-k="color"]').value||"").trim() || "Anthrazit (RAL 7016)";
-          s.privacy = String(det.querySelector('select[data-k="privacy"]').value||"no");
-
-          // legacy fallback: total length and default fields from first segment
-          p.customer.length = String(totalLengthFromSegments() || "");
-          const a = p.customer.segments[0] || s;
-          p.customer.height = a.height || p.customer.height;
-          p.customer.system = a.system || p.customer.system;
-          p.customer.color = a.color || p.customer.color;
-          // privacy global yes if any segment yes
-          p.customer.privacy = p.customer.segments.some(x=>(x.privacy||"no")==="yes") ? "yes" : "no";
-
-          save();
-          try{ refreshAll(); }catch(e){}
-        };
-
-        det.querySelectorAll("input,select").forEach(elm=>{
-          elm.addEventListener("change", commit);
-          elm.addEventListener("input", ()=>{ save(); updateAddrBar(); });
-        });
-
-        const btnDel = det.querySelector('button[data-act="del"]');
-        if(btnDel){
-          btnDel.addEventListener("click", ()=>{
-            if(segs.length<=1){
-              toast("Nicht möglich", "Mindestens Abschnitt A bleibt.");
-              return;
-            }
-            if(confirm(`Abschnitt ${s.label} löschen?`)){
-              p.customer.segments = p.customer.segments.filter(x=>x.id!==s.id);
-              // update legacy fields
-              p.customer.length = String(totalLengthFromSegments() || "");
-              p.customer.privacy = p.customer.segments.some(x=>(x.privacy||"no")==="yes") ? "yes":"no";
-              save();
-              renderSegments();
-              refreshAll();
-            }
-          });
-        }
-
-        segList.appendChild(det);
-      }
-    }
-
-    function closeAllSegments(open){
-      if(!segList) return;
-      segList.querySelectorAll("details").forEach(d=>{ d.open = !!open; });
-    }
-
-    if(btnSegCollapseAll && !btnSegCollapseAll.dataset.bound){ btnSegCollapseAll.dataset.bound="1"; btnSegCollapseAll.addEventListener("click", ()=>closeAllSegments(false)); }
-    if(btnSegExpandAll && !btnSegExpandAll.dataset.bound){ btnSegExpandAll.dataset.bound="1"; btnSegExpandAll.addEventListener("click", ()=>closeAllSegments(true)); }
-
-    if(btnSegAdd && !btnSegAdd.dataset.bound){ btnSegAdd.dataset.bound="1"; btnSegAdd.addEventListener("click", ()=>{
-      ensureSegments();
-      const used = new Set((p.customer.segments||[]).map(x=>String(x.label||"").toUpperCase()));
-      const want = segAddLabel ? String(segAddLabel.value||"").toUpperCase() : "B";
-      let label = want;
-      if(used.has(label)){
-        // pick next free
-        const labels="ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
-        label = labels.find(x=>!used.has(x)) || ("X"+String(Date.now()).slice(-2));
+      const dupNames = { "mats":1, "mat elements":1, "mat elements total":1, "elements":1 };
+@@ -2137,50 +2255,64 @@ function refreshCustomerUI(){
       }
       const base = p.customer.segments[0] || {};
       p.customer.segments.push({
         id: uid(),
-        label,
-        length:"",
-        height: base.height || 160,
+        Etikett,
+        Länge:"",
+        Höhe: Basis.Höhe || 160,
         system: base.system || "Doppelstab",
-        color: base.color || "Anthrazit (RAL 7016)",
-        privacy: base.privacy || "no"
+        Farbe: Basisfarbe || "Anthrazit (RAL 7016)",
+        Datenschutz: base.privacy || "Nein"
       });
-      save();
+      speichern();
       renderSegments();
       toast("Abschnitt hinzugefügt", label);
     }); }
 
-    // Initial values for address inputs
+    // Anfangswerte für Adresseneingänge
     if(kStreet) kStreet.value = p.addrStreet || "";
     if(kZip) kZip.value = p.addrZip || "";
     if(kCity) kCity.value = p.addrCity || "";
@@ -2158,6 +1060,20 @@ function refreshCustomerUI(){
     if(kObjAddr) kObjAddr.value = p.objAddr || "";
     updateAddrBar();
     renderSegments();
+
+    const hasSegments = Array.isArray(p.customer.segments) && p.customer.segments.length>0;
+    const segLenTotal = hasSegments ? totalLengthFromSegments() : 0;
+    if(kLen){
+      kLen.readOnly = hasSegments;
+      kLen.value = hasSegments ? (segLenTotal ? fmt(segLenTotal) : "") : (c.length||"");
+    }
+    if(kPrivacy){
+      kPrivacy.disabled = hasSegments;
+    }
+    if(kPrivacyLen){
+      kPrivacyLen.disabled = hasSegments || (kPrivacy && kPrivacy.value!=="yes");
+      if(hasSegments) kPrivacyLen.value = "";
+    }
 
     if(kStreet && !kStreet.dataset.bound){ kStreet.dataset.bound="1"; kStreet.addEventListener("input", ()=>{ updateAddrBar(); save(); }); }
     if(kCity && !kCity.dataset.bound){ kCity.dataset.bound="1"; kCity.addEventListener("input", ()=>{ updateAddrBar(); save(); }); }
@@ -2177,67 +1093,14 @@ function refreshCustomerUI(){
     el("chefTitle").textContent = p ? `🛠️ Chef/Team: ${p.title}` : "🛠️ Chef / Team";
     if(!p) return;
     cBagger.value=p.chef.bagger||"no";
-    cRamme.value=p.chef.ramme||"no";
+    cFrame.value=p.chef.frame||"no";
     if(el("cHandbohr")) el("cHandbohr").value=p.chef.handbohr||"no";
     if(el("cSchubkarre")) el("cSchubkarre").value=p.chef.schubkarre||"no";
     cHaenger.value=p.chef.haenger||"no";
     if(el("cCustomerNote")) el("cCustomerNote").value = (p.customer && p.customer.note) ? p.customer.note : "";
     cNote.value=p.chef.note||"";
     ensureChefAutoMaterials(p);
-    renderMaterials(); renderPhotos(); refreshChefPill();
-  }
-
-
-  function refreshAll(){
-    refreshProjectSelectors();
-    refreshCustomerUI();
-    refreshChefUI();
-    updateStatusPill();
-    // View mode
-    if(state.selectedProjectId) showCustomerEdit(); else showCustomerList();
-  }
-
-  // init
-  fillHeights();
-  fillSelect(kColor, ZAUNTEAM_FARBEN, "Anthrazit (RAL 7016)");
-  fillSelect(kWood, HOLZARTEN, "—");
-  fillSelect(kWpc, WPC_VARIANTEN, "—");
-  updateConcretePlaceholder();
-  if(pCreated && !pCreated.value) pCreated.value = new Date().toISOString().slice(0,10);
-  migrateLegacy();
-  // Always keep version current
-  state.version = APP_VERSION;
-  refreshAll();
-})();
-  // Demo-Modus (für Chef-Showcase – lädt Beispielkunde ohne echte Daten)
-  const btnDemo = el("btnDemo");
-  function makeDemoPhoto(label){
-    const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="800">
-      <defs>
-        <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-          <stop offset="0" stop-color="#16a34a"/>
-          <stop offset="1" stop-color="#ef4444"/>
-        </linearGradient>
-      </defs>
-      <rect width="1200" height="800" fill="url(#g)"/>
-      <rect x="70" y="70" width="1060" height="660" rx="40" fill="rgba(0,0,0,0.35)"/>
-      <text x="600" y="360" font-size="64" fill="#fff" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto">${APP_NAME}</text>
-      <text x="600" y="450" font-size="54" fill="#fff" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto">${label}</text>
-      <text x="600" y="520" font-size="28" fill="#fff" text-anchor="middle" font-family="system-ui, -apple-system, Segoe UI, Roboto">Demo-Foto (Platzhalter)</text>
-    </svg>`;
-    return "data:image/svg+xml;base64," + btoa(unescape(encodeURIComponent(svg)));
-  }
-  function loadDemo(){
-    const p = blankProject("Demo: Musterkunde");
-    p.status = "Entwurf";
-    p.plannedHours = "12";
-    p.chef.hoursPlanned = "12";
-    p.phone = "+49 170 000000";
-    p.email = "demo@zaunteam.de";
-    p.addr = "Musterstraße 1, 12345 Musterstadt";
-    p.objAddr = "Baustelle: Musterweg 9, 12345 Musterstadt";
-    p.plannedDate = new Date().toISOString().slice(0,10);
-    p.customer.length = "37";
+@@ -2241,27 +2373,25 @@ function refreshCustomerUI(){
     p.customer.height = 160;
     p.customer.system = "Doppelstab";
     p.customer.color = "Anthrazit (RAL 7016)";
@@ -2254,7 +1117,7 @@ function refreshCustomerUI(){
     state.projects = [p];
     state.selectedProjectId = p.id;
     if(!state.meta) state.meta = {};
-    save();
+    speichern();
     refreshAll();
     toast("✅ Demo geladen", p.title);
   }
