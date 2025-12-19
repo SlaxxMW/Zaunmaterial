@@ -291,6 +291,8 @@
     @media (max-width:820px){
       .matRow{ grid-template-columns: 1fr 110px 90px 44px; }
     }
+
+  .isDisabled{ opacity:0.65; filter:saturate(0.85); }
 </style>
 </head>
 
@@ -471,6 +473,18 @@
         <div>
           <label>Zaunlänge (m)</label>
           <input id="kLen" inputmode="decimal" placeholder="z. B. 17,5" />
+        </div>
+      </div>
+
+      <div id="chefSegmentsBox" class="card" style="margin-top:10px; display:none;">
+        <div class="row" style="justify-content:space-between; align-items:center;">
+          <div style="font-weight:800;">📐 Zaunabschnitte</div>
+          <div class="pill" id="chefSegmentsPill">—</div>
+        </div>
+        <div id="chefSegmentsList" style="margin-top:8px;"></div>
+        <div class="row" style="margin-top:8px; gap:8px; flex-wrap:wrap;">
+          <button class="btn green" id="btnChefMaps" type="button">📍 Google Maps</button>
+          <button class="btn teal" id="btnChefWhatsAll" type="button">WhatsApp Intern (alles)</button>
         </div>
       </div>
 
