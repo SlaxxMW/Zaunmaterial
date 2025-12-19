@@ -60,9 +60,9 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.29";
+    const APP_VERSION = "1.4.30";
   const APP_BUILD = "2025-12-19";
-let state = { version:"1.4.29", selectedProjectId:null, projects:[] };
+let state = { version:"1.4.30", selectedProjectId:null, projects:[] };
 
   function blankProject(name) {
     return {
@@ -350,7 +350,7 @@ ${p.title}`)) return;
 // Kunde
   let kCreated=null, kPlanned=null, kPhone=null, kEmail=null;
   kCreated=el("kCreated"); kPlanned=el("kPlanned"); kPhone=el("kPhone"); kEmail=el("kEmail");
-  const kLen=el("kLen"), kHeight=el("kHeight"), kSystem=el("kSystem"), kColor=el("kColor"), kPrivacy=el("kPrivacy"), kPrivacyLen=el("kPrivacyLen"), kWood=el("kWood"), kWpc=el("kWpc");
+  const kLen=el("kLen"), kHeight=el("kHeight"), kSystem=el("kSystem"), kColor=el("kColor"), kPrivacy=el("kPrivacy"), kPrivacyLen=el("kPrivacyLen"), kPrivacyRoll=el("kPrivacyRoll"), kPrivacyRollsAuto=el("kPrivacyRollsAuto"), kWood=el("kWood"), kWpc=el("kWpc");
   const kSlopeType=el("kSlopeType"), kSlopePct=el("kSlopePct"), kCorners=el("kCorners"), kConcreteMode=el("kConcreteMode"), kConcreteVal=el("kConcreteVal"), kNote=el("kNote");
   const kundeKpi=el("kundeKpi");
 
@@ -380,12 +380,25 @@ ${p.title}`)) return;
   bindProjectMetaAutosave();
 
   function togglePrivacyDependent(){
-    if(!kPrivacy || !kPrivacyLen) return;
+    if(!kPrivacy) return;
     const on = (kPrivacy.value === "yes");
-    kPrivacyLen.disabled = !on;
-    if(!on) kPrivacyLen.value = "";
+    if(kPrivacyLen){
+      kPrivacyLen.disabled = !on;
+      if(!on) kPrivacyLen.value = "";
+    }
+    if(typeof kPrivacyRoll!=="undefined" && kPrivacyRoll){
+      kPrivacyRoll.disabled = !on;
+      if(!on) kPrivacyRoll.value = "35";
+    }
+    if(typeof kPrivacyRollsAuto!=="undefined" && kPrivacyRollsAuto){
+      kPrivacyRollsAuto.disabled = true;
+      if(!on) kPrivacyRollsAuto.value = "";
+    }
   }
   if(kPrivacy){ kPrivacy.addEventListener("change", ()=>{ togglePrivacyDependent(); persistCustomer(); }); }
+  if(kPrivacyLen){ kPrivacyLen.addEventListener("input", ()=>{ try{ const p=currentProject(); if(!p) return; const pr=computePrivacyRolls(p.customer, computeTotals(p.customer)); if(kPrivacyRollsAuto) kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : ""; }catch(_){ } persistCustomer(); }); }
+  if(typeof kPrivacyRoll!=="undefined" && kPrivacyRoll){ kPrivacyRoll.addEventListener("change", ()=>{ try{ const p=currentProject(); if(!p) return; const pr=computePrivacyRolls(p.customer, computeTotals(p.customer)); if(kPrivacyRollsAuto) kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : ""; }catch(_){ } persistCustomer(); }); }
+
 
   // Tore (Varianten)
   const kGateType=el("kGateType");
@@ -445,6 +458,7 @@ ${p.title}`)) return;
     c.concreteMode=kConcreteMode.value;
     c.privacy = (kPrivacy ? (kPrivacy.value||"no") : (c.privacy||"no"));
     c.privacyLen = (c.privacy==="yes") ? ((kPrivacyLen ? (kPrivacyLen.value||"") : "").trim()) : "";
+    c.privacyRollLen = (c.privacy==="yes") ? (toNum((kPrivacyRoll ? kPrivacyRoll.value : (c.privacyRollLen||35)),35) || 35) : 35;
     c.note=(kNote.value||"").trim();
     ensureGateDefaults(c);
     if(kGateType) c.gateType = kGateType.value || c.gateType || "none";
@@ -476,6 +490,23 @@ ${p.title}`)) return;
     const postStrips=posts ? (posts+corners) : 0;
     return {lengthM, panels, posts, cornerPosts, postStrips};
   }
+  function computePrivacyRolls(c, totals){
+    try{
+      if(!c || (c.privacy||"no")!=="yes") return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
+      const rollLen = clampInt(c.privacyRollLen || 35, 20, 100);
+      const h = Number(c.height)||160;
+      const stripsPerPanel = Math.max(0, Math.round(h/20)); // 100cm→5, 120→6, ...
+      const baseLen = toNum(c.privacyLen, 0) || (totals && totals.lengthM) || toNum(c.length, 0) || 0;
+      const lengthM = Math.max(0, baseLen);
+      const panels = lengthM ? Math.ceil(lengthM / PANEL_W) : 0;
+      const totalStripM = panels * stripsPerPanel * PANEL_W; // Meter Sichtschutzstreifen gesamt
+      const rolls = totalStripM ? Math.ceil(totalStripM / rollLen) : 0;
+      return {rolls, rollLen, stripsPerPanel, panels, totalStripM, lengthM};
+    }catch(e){
+      return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
+    }
+  }
+
   function sysLabel(c){
     const h=Number(c.height)||160;
     const base = (c.system==="Doppelstab")?"Doppelstab‑Matten":(c.system==="Aluminium")?"Alu‑Elemente":(c.system==="Holz")?"Holz‑Elemente":(c.system==="WPC")?"WPC‑Elemente":(c.system==="Diagonal Geflecht")?"Diagonal‑Geflecht":(c.system==="Tornado")?"Tornado‑Zaun":(c.system==="Elektrozaun")?"Elektrozaun":"Zaun‑Elemente";
@@ -590,9 +621,19 @@ ${p.title}`)) return;
     }
     upsertMat(mats, "Pfostenleisten", t.postStrips, "Stk", "gesamt");
     if((c.privacy||"no")==="yes"){
-      let pm = toNum(c.privacyLen, 0);
-      if(!pm && t.lengthM) pm = t.lengthM;
-      if(pm>0) upsertMat(mats, "Sichtschutz", pm, "m", "Kunde");
+      const pr = computePrivacyRolls(c, t);
+      if(pr.lengthM>0){
+        upsertMat(mats, "Sichtschutz (Länge)", pr.lengthM, "m", "Kunde");
+        if(pr.rolls>0){
+          upsertMat(mats, "Sichtschutz‑Rollen", pr.rolls, "Rolle", `${pr.rollLen}m • ${pr.stripsPerPanel}×2,5m je Feld • gesamt ${fmt(pr.totalStripM)}m`);
+        }
+      }
+      // UI-Hint im Kunden-Tab (Auto-Feld)
+      try{
+        if(typeof kPrivacyRollsAuto!=="undefined" && kPrivacyRollsAuto){
+          kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : "";
+        }
+      }catch(_){}
     }
     {
       const cc = computeConcrete(c);
@@ -628,9 +669,12 @@ ${p.title}`)) return;
     }
     if(c.color) lines.push(`• Farbe: ${c.color}`);
     if((c.privacy||"no")==="yes"){
-      let pm = toNum(c.privacyLen, 0);
-      if(!pm && t.lengthM) pm = t.lengthM;
-      if(pm>0) lines.push(`• Sichtschutz: ja (${fmt(pm)} m)`);
+      const pr = computePrivacyRolls(c, t);
+      if(pr.lengthM>0){
+        const rl = pr.rollLen || 35;
+        const rollsTxt = pr.rolls ? `, ca. ${pr.rolls} Rollen à ${rl}m` : "";
+        lines.push(`• Sichtschutz: ja (${fmt(pr.lengthM)} m${rollsTxt})`);
+      }
     }
     const g=gateSummary(c);
     if(g.total){
@@ -1218,13 +1262,15 @@ ${p.title}`)) return;
   }
 
 // Chef
-  const cBagger=el("cBagger"), cRamme=el("cRamme"), cHaenger=el("cHaenger"), cNote=el("cNote");
+  const cBagger=el("cBagger"), cRamme=el("cRamme"), cHaenger=el("cHaenger"), cHoursPlanned=el("cHoursPlanned"), cStatus=el("cStatus"), cNote=el("cNote");
   const matPill=el("matPill"), matList=el("matList"), mName=el("mName"), mQty=el("mQty"), mUnit=el("mUnit"), mNote=el("mNote");
   const photoGrid=el("photoGrid"), photoPill=el("photoPill");
 
   function persistChef(){
     const p=currentProject(); if(!p) return;
     p.chef.bagger=cBagger.value; p.chef.ramme=cRamme.value; p.chef.handbohr=(el("cHandbohr")?el("cHandbohr").value:"no"); p.chef.schubkarre=(el("cSchubkarre")?el("cSchubkarre").value:"no"); p.chef.haenger=cHaenger.value;
+    if(cHoursPlanned) p.chef.hoursPlanned=(cHoursPlanned.value||"").trim();
+    if(cStatus) p.chef.status=(cStatus.value||"draft");
     p.chef.note=(cNote.value||"").trim();
     save(); refreshChefPill();
   }
@@ -1246,6 +1292,8 @@ ${p.title}`)) return;
     if(el("cHandbohr")) el("cHandbohr").value=p.chef.handbohr||"no";
     if(el("cSchubkarre")) el("cSchubkarre").value=p.chef.schubkarre||"no";
     cHaenger.value=p.chef.haenger||"no";
+    if(cHoursPlanned) cHoursPlanned.value = (p.chef.hoursPlanned||"");
+    if(cStatus) cStatus.value = (p.chef.status||"draft");
     if(el("cCustomerNote")) el("cCustomerNote").value = (p.customer && p.customer.note) ? p.customer.note : "";
     cNote.value=p.chef.note||"";
     ensureChefAutoMaterials(p);
@@ -1425,6 +1473,8 @@ ${p.title}`)) return;
     if(p.phone) lines.push(`Tel: ${p.phone}`);
     if(p.addr) lines.push(`Kunde: ${p.addr}`);
     if(p.objAddr) lines.push(`Objekt: ${p.objAddr}`);
+    if(p.chef && (p.chef.hoursPlanned||"").trim()) lines.push(`Geplante Stunden: ${(p.chef.hoursPlanned||"").trim()}`);
+    if(p.chef && (p.chef.status||"") && p.chef.status!=="draft") lines.push(`Status: ${p.chef.status}`);
     lines.push("");
     const custNote = (p.customer && (p.customer.note||"").trim()) ? p.customer.note.trim() : "";
     if(custNote){
@@ -1436,6 +1486,8 @@ ${p.title}`)) return;
     if(p.chef.bagger==="yes") eq.push("Bagger");
     if(p.chef.ramme==="yes") eq.push("Ramme");
     if(p.chef.haenger==="yes") eq.push("Hänger");
+    if(p.chef.handbohr==="yes") eq.push("Handbohrgerät");
+    if(p.chef.schubkarre==="yes") eq.push("Schubkarre");
     if(eq.length){
       lines.push("Geräte:");
       eq.forEach(x=>lines.push(`- ${x}`));
@@ -1512,6 +1564,13 @@ ${p.title}`)) return;
     kColor.value=c.color||"Anthrazit (RAL 7016)";
     if(kPrivacy) kPrivacy.value = c.privacy || "no";
     if(kPrivacyLen) kPrivacyLen.value = c.privacyLen || "";
+    if(typeof kPrivacyRoll!=="undefined" && kPrivacyRoll) kPrivacyRoll.value = String(c.privacyRollLen || 35);
+    try{
+      if(typeof kPrivacyRollsAuto!=="undefined" && kPrivacyRollsAuto){
+        const pr = computePrivacyRolls(c, computeTotals(c));
+        kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : "";
+      }
+    }catch(_){ }
     kWood.value=(c.system==="Holz") ? (c.woodType||"—") : "—";
     kWpc.value=(c.system==="WPC") ? (c.wpcType||"—") : "—";
     kSlopeType.value=c.slopeType||"flat";

@@ -510,6 +510,19 @@
           <input id="kPrivacyLen" inputmode="decimal" placeholder="leer = ganze Zaunlänge" />
         </div>
       </div>
+      <div class="grid2" id="privacyRollRow" style="margin-top:10px;">
+        <div>
+          <label>Rollen‑Länge</label>
+          <select id="kPrivacyRoll">
+            <option value="35">35 m</option>
+            <option value="50">50 m</option>
+          </select>
+        </div>
+        <div>
+          <label>Sichtschutz‑Rollen (Auto)</label>
+          <input id="kPrivacyRollsAuto" disabled />
+        </div>
+      </div>
 
       <div class="card" style="margin-top:12px;">
         <div class="grid2">
@@ -589,6 +602,22 @@
           <select id="cSchubkarre">
             <option value="no">nein</option>
             <option value="yes">ja</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>Geplante Stunden</label>
+          <input id="cHoursPlanned" inputmode="decimal" placeholder="z.B. 16" />
+        </div>
+        <div>
+          <label>Status (optional)</label>
+          <select id="cStatus">
+            <option value="draft">Entwurf</option>
+            <option value="planned">geplant</option>
+            <option value="inwork">in Arbeit</option>
+            <option value="done">fertig</option>
           </select>
         </div>
       </div>
@@ -689,7 +718,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js?v=1.4.29" defer></script></script>
+  <script src="./app.js?v=1.4.30" defer></script></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
@@ -704,7 +733,7 @@
 
       try {
         // iOS/PWA: SW URL mit Version -> garantiertes Update
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.29", { updateViaCache: "none" });
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.30", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});
