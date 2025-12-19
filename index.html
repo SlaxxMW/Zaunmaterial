@@ -305,6 +305,8 @@
         </div>
         <div class="row">
           <button class="btn small" id="btnBackup" type="button">Backup.json</button>
+      <button id="btnImportJson" class="btn" type="button">Import.json</button>
+      <input id="fileImportJson" type="file" accept="application/json,.json" style="display:none" />
           <button class="btn small" id="btnCSV" type="button">Material CSV</button>
           <button class="btn small bad" id="btnReset" type="button">Reset</button>
         </div>
@@ -718,7 +720,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js?v=1.4.30" defer></script></script>
+  <script src="./app.js?v=1.4.31" defer></script></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
@@ -733,7 +735,7 @@
 
       try {
         // iOS/PWA: SW URL mit Version -> garantiertes Update
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.30", { updateViaCache: "none" });
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.31", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});

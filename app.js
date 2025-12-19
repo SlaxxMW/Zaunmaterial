@@ -60,9 +60,9 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.30";
+    const APP_VERSION = "1.4.31";
   const APP_BUILD = "2025-12-19";
-let state = { version:"1.4.30", selectedProjectId:null, projects:[] };
+let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
 
   function blankProject(name) {
     return {
@@ -1533,10 +1533,74 @@ ${p.title}`)) return;
   }
 
   // Backup
-  el("btnBackup").addEventListener("click", ()=>{
+  const btnBackup = el("btnBackup");
+  if(btnBackup) btnBackup.addEventListener("click", ()=>{
     const data={ exportedAt: nowISO(), tool:"Zaunteam Zaunplaner", version:APP_VERSION, state };
     downloadText(JSON.stringify(data,null,2), "Zaunplaner_Backup.json", "application/json");
   });
+
+  // JSON Import (für Handy ↔ PC Transfer)
+  const btnImportJson = el("btnImportJson");
+  const fileImportJson = el("fileImportJson");
+
+  function normalizeImportedState(raw){
+    // akzeptiert entweder {state:...} oder direkt den state
+    const s = (raw && raw.state) ? raw.state : raw;
+    if(!s || typeof s!=="object") return null;
+
+    // Minimalstruktur
+    const out = {
+      version: APP_VERSION,
+      projects: Array.isArray(s.projects) ? s.projects : [],
+      selectedProjectId: s.selectedProjectId || null,
+      ui: (s.ui && typeof s.ui==="object") ? s.ui : {},
+    };
+
+    // Bewahre optionale Felder, falls vorhanden
+    for(const k of ["notes","settings","meta"]){
+      if(s[k]!==undefined) out[k]=s[k];
+    }
+    return out;
+  }
+
+  function doImportJsonText(txt){
+    let parsed=null;
+    try{ parsed = JSON.parse(txt); }catch(e){ toast("❌ Import fehlgeschlagen: keine gültige JSON"); return; }
+    const next = normalizeImportedState(parsed);
+    if(!next){ toast("❌ Import fehlgeschlagen: Datenformat unbekannt"); return; }
+
+    // Safety: vorher Backup in lastgood schreiben
+    try{ localStorage.setItem(STORAGE_KEY+"_lastgood", JSON.stringify(state)); }catch(e){}
+
+    // Übernehmen
+    state = next;
+
+    // Valid selectedProjectId
+    if(state.selectedProjectId && !state.projects.find(p=>p.id===state.selectedProjectId)){
+      state.selectedProjectId = state.projects[0]?.id || null;
+    }
+
+    save();
+    try{ refreshAll(); }catch(e){}
+    toast("✅ Import OK – Daten übernommen");
+  }
+
+  if(btnImportJson && fileImportJson){
+    btnImportJson.addEventListener("click", ()=> fileImportJson.click());
+    fileImportJson.addEventListener("change", async (ev)=>{
+      const f = ev.target.files && ev.target.files[0];
+      if(!f) return;
+      try{
+        const txt = await f.text();
+        doImportJsonText(txt);
+      }catch(e){
+        toast("❌ Import fehlgeschlagen");
+      } finally {
+        try{ ev.target.value=""; }catch(e){}
+      }
+    });
+  }
+
   el("btnCSV").addEventListener("click", ()=>{
     const p=currentProject(); if(!p) return toast("Kein Kunde");
     const rows=[["Kundenname","Datum","Material","Menge","Einheit","Notiz"]].concat((p.chef.materials||[]).map(it=>[p.title,p.plannedDate||"",it.name||"",String((it.qty!=null)?it.qty:""),it.unit||"",it.note||""]));
