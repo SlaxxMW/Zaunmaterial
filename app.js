@@ -60,9 +60,9 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.26";
+    const APP_VERSION = "1.4.27";
   const APP_BUILD = "2025-12-19";
-let state = { version:"1.4.26", selectedProjectId:null, projects:[] };
+let state = { version:"1.4.27", selectedProjectId:null, projects:[] };
 
   function blankProject(name) {
     return {
@@ -328,7 +328,8 @@ ${p.title}`)) return;
     });
   }
 // Kunde
-  const kCreated=el("kCreated"), kPlanned=el("kPlanned"), kPhone=el("kPhone"), kEmail=el("kEmail");
+  let kCreated=null, kPlanned=null, kPhone=null, kEmail=null;
+  kCreated=el("kCreated"); kPlanned=el("kPlanned"); kPhone=el("kPhone"); kEmail=el("kEmail");
   const kLen=el("kLen"), kHeight=el("kHeight"), kSystem=el("kSystem"), kColor=el("kColor"), kPrivacy=el("kPrivacy"), kPrivacyLen=el("kPrivacyLen"), kWood=el("kWood"), kWpc=el("kWpc");
   const kSlopeType=el("kSlopeType"), kSlopePct=el("kSlopePct"), kCorners=el("kCorners"), kConcreteMode=el("kConcreteMode"), kConcreteVal=el("kConcreteVal"), kNote=el("kNote");
   const kundeKpi=el("kundeKpi");
@@ -348,11 +349,15 @@ ${p.title}`)) return;
     if(kEmail) p.email = (kEmail.value||"").trim();
     save();
   }
-  [kCreated,kPlanned,kPhone,kEmail].forEach(x=>{
-    if(!x) return;
-    x.addEventListener("input", persistProjectMeta);
-    x.addEventListener("change", persistProjectMeta);
-  });
+  
+  function bindProjectMetaAutosave(){
+    [kCreated,kPlanned,kPhone,kEmail].forEach(x=>{
+      if(!x) return;
+      x.addEventListener("input", persistProjectMeta);
+      x.addEventListener("change", persistProjectMeta);
+    });
+  }
+  bindProjectMetaAutosave();
 
   function togglePrivacyDependent(){
     if(!kPrivacy || !kPrivacyLen) return;
