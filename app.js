@@ -47,6 +47,11 @@
     if(!Number.isFinite(x)) return "0";
     return (Math.round(x*100)/100).toString().replace(".", ",");
   };
+  const fmtN = (n, dec=1) => {
+    const x = Number(n);
+    if(!Number.isFinite(x)) return "0";
+    return x.toLocaleString("de-DE", {minimumFractionDigits:dec, maximumFractionDigits:dec});
+  };
   const toNum = (v, d=0) => {
     if(v==null) return d;
     const s = String(v).trim().replace(",", ".");
@@ -60,9 +65,10 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.31";
-  const APP_BUILD = "2025-12-19";
-let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
+    const APP_VERSION = "1.4.32";
+  const APP_BUILD = "2026-05-06";
+  const SCHEMA_VERSION = 2;
+let state = { version:"1.4.32", schemaVersion:SCHEMA_VERSION, selectedProjectId:null, projects:[] };
 
   function blankProject(name) {
     return {
@@ -77,15 +83,30 @@ let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
       customer: {
         length: "", height:160, system:"Doppelstab", color:"Anthrazit (RAL 7016)",
         woodType:"", wpcType:"", slopeType:"flat", slopePct:"", corners:0,
-        concreteMode:"sacks", concreteValue:"", note:"", privacy:"no", privacyLen:"", gateType:"none", gates:[]
+        concreteMode:"sacks", concreteValue:"", note:"", privacy:"no", privacyLen:"", privacyRollLen:35, gateType:"none", gates:[]
       },
-      chef: { bagger:"no", ramme:"no", handbohr:"no", schubkarre:"no", haenger:"no", note:"", materials:[], photos:[] },
+      chef: { bagger:"no", ramme:"no", handbohr:"no", schubkarre:"no", haenger:"no", note:"", materials:[], photos:[], hoursPlanned:"", status:"draft" },
       status:"Entwurf"
     };
   }
 
+  function ensureProjectDefaults(p){
+    if(!p.customer) p.customer = {};
+    if(!p.chef) p.chef = {};
+    p.customer.privacyRollLen = toNum(p.customer.privacyRollLen,35) || 35;
+    if(!p.customer.gateType) p.customer.gateType="none";
+    if(!Array.isArray(p.customer.gates)) p.customer.gates=[];
+    if(!Array.isArray(p.chef.materials)) p.chef.materials=[];
+    if(!Array.isArray(p.chef.photos)) p.chef.photos=[];
+    if(typeof p.chef.hoursPlanned!=="string") p.chef.hoursPlanned = p.chef.hoursPlanned!=null ? String(p.chef.hoursPlanned) : "";
+    if(!p.chef.status) p.chef.status="draft";
+    return p;
+  }
+
   function save() {
     try{
+      state.schemaVersion = SCHEMA_VERSION;
+      state.projects = (state.projects||[]).map(ensureProjectDefaults);
       localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
       // safety: keep last known good state to recover from JS bugs/crashes
       if(state && Array.isArray(state.projects) && state.projects.length){
@@ -100,17 +121,18 @@ let state = { version:"1.4.31", selectedProjectId:null, projects:[] };
     if(stable) {
       try {
         const s = JSON.parse(stable);
-        if(s && Array.isArray(s.projects)) { state = {...state, ...s, version:APP_VERSION}; return; }
+        if(s && Array.isArray(s.projects)) { state = {...state, ...s, version:APP_VERSION}; state.projects = state.projects.map(ensureProjectDefaults); return; }
       } catch(e){}
     }
     
     // Recovery: wenn durch Bug/Crash leer gespeichert wurde, versuche "lastgood" wiederherzustellen
     try{
       const lg = localStorage.getItem(STORAGE_KEY+"_lastgood");
-      if(lg){
-        const s2 = JSON.parse(lg);
-        if(s2 && Array.isArray(s2.projects) && s2.projects.length && (!state.projects || !state.projects.length)){
+          if(lg){
+            const s2 = JSON.parse(lg);
+            if(s2 && Array.isArray(s2.projects) && s2.projects.length && (!state.projects || !state.projects.length)){
           state = {...state, ...s2, version:APP_VERSION};
+          state.projects = state.projects.map(ensureProjectDefaults);
           // nicht sofort überschreiben – nur anzeigen
           setTimeout(()=>{ try{ toast("✅ Kunden wiederhergestellt (Backup)"); }catch(e){} }, 50);
           return;
@@ -160,6 +182,7 @@ for(const k of LEGACY_KEYS) {
             return np;
           });
           state.projects = converted;
+          state.projects = state.projects.map(ensureProjectDefaults);
           state.selectedProjectId = (s.selectedProjectId && converted.some(p=>p.id===s.selectedProjectId)) ? s.selectedProjectId : ((converted[0] && converted[0].id) ? converted[0].id : null);
           save();
           toast("Daten übernommen", "aus älterer Version");
@@ -169,7 +192,7 @@ for(const k of LEGACY_KEYS) {
     }
     const demo = blankProject("Demo – Kunde Beispiel");
     demo.plannedDate = "2025-12-16";
-    state.projects = [demo];
+    state.projects = [ensureProjectDefaults(demo)];
     state.selectedProjectId = demo.id;
     save();
   }
@@ -351,7 +374,7 @@ ${p.title}`)) return;
   let kCreated=null, kPlanned=null, kPhone=null, kEmail=null;
   kCreated=el("kCreated"); kPlanned=el("kPlanned"); kPhone=el("kPhone"); kEmail=el("kEmail");
   const kLen=el("kLen"), kHeight=el("kHeight"), kSystem=el("kSystem"), kColor=el("kColor"), kPrivacy=el("kPrivacy"), kPrivacyLen=el("kPrivacyLen"), kPrivacyRoll=el("kPrivacyRoll"), kPrivacyRollsAuto=el("kPrivacyRollsAuto"), kWood=el("kWood"), kWpc=el("kWpc");
-  const kSlopeType=el("kSlopeType"), kSlopePct=el("kSlopePct"), kCorners=el("kCorners"), kConcreteMode=el("kConcreteMode"), kConcreteVal=el("kConcreteVal"), kNote=el("kNote");
+  const kSlopeType=el("kSlopeType"), kSlopePct=el("kSlopePct"), kCorners=el("kCorners"), kConcreteMode=el("kConcreteMode"), kConcreteVal=el("kConcreteVal"), kNote=el("kNote"), kHoursPlanned=el("kHoursPlanned");
   const kundeKpi=el("kundeKpi");
 
   const dateFromIso = (iso) => String(iso||"").slice(0,10);
@@ -379,7 +402,7 @@ ${p.title}`)) return;
   }
   bindProjectMetaAutosave();
 
-  function togglePrivacyDependent(){
+  function togglePrivacyControls(){
     if(!kPrivacy) return;
     const on = (kPrivacy.value === "yes");
     if(kPrivacyLen){
@@ -395,7 +418,7 @@ ${p.title}`)) return;
       if(!on) kPrivacyRollsAuto.value = "";
     }
   }
-  if(kPrivacy){ kPrivacy.addEventListener("change", ()=>{ togglePrivacyDependent(); persistCustomer(); }); }
+  if(kPrivacy){ kPrivacy.addEventListener("change", ()=>{ togglePrivacyControls(); persistCustomer(); }); }
   if(kPrivacyLen){ kPrivacyLen.addEventListener("input", ()=>{ try{ const p=currentProject(); if(!p) return; const pr=computePrivacyRolls(p.customer, computeTotals(p.customer)); if(kPrivacyRollsAuto) kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : ""; }catch(_){ } persistCustomer(); }); }
   if(typeof kPrivacyRoll!=="undefined" && kPrivacyRoll){ kPrivacyRoll.addEventListener("change", ()=>{ try{ const p=currentProject(); if(!p) return; const pr=computePrivacyRolls(p.customer, computeTotals(p.customer)); if(kPrivacyRollsAuto) kPrivacyRollsAuto.value = pr.rolls ? `${pr.rolls} Rollen (à ${pr.rollLen}m)` : ""; }catch(_){ } persistCustomer(); }); }
 
@@ -432,14 +455,8 @@ ${p.title}`)) return;
   }
   kSystem.addEventListener("change", ()=>{ toggleMaterialDependent(); persistCustomer(); });
 
-  function togglePrivacyDependent(){
-    if(!kPrivacy || !kPrivacyLen) return;
-    const on = (kPrivacy.value==="yes");
-    kPrivacyLen.disabled = !on;
-    if(!on) kPrivacyLen.value="";
-  }
   if(kPrivacy){
-    kPrivacy.addEventListener("change", ()=>{ togglePrivacyDependent(); persistCustomer(); });
+    kPrivacy.addEventListener("change", ()=>{ togglePrivacyControls(); persistCustomer(); });
   }
 
 
@@ -458,7 +475,8 @@ ${p.title}`)) return;
     c.concreteMode=kConcreteMode.value;
     c.privacy = (kPrivacy ? (kPrivacy.value||"no") : (c.privacy||"no"));
     c.privacyLen = (c.privacy==="yes") ? ((kPrivacyLen ? (kPrivacyLen.value||"") : "").trim()) : "";
-    c.privacyRollLen = (c.privacy==="yes") ? (toNum((kPrivacyRoll ? kPrivacyRoll.value : (c.privacyRollLen||35)),35) || 35) : 35;
+    const rollSel = toNum((kPrivacyRoll ? kPrivacyRoll.value : (c.privacyRollLen||35)),35);
+    c.privacyRollLen = (rollSel>=50) ? 50 : 35;
     c.note=(kNote.value||"").trim();
     ensureGateDefaults(c);
     if(kGateType) c.gateType = kGateType.value || c.gateType || "none";
@@ -492,18 +510,21 @@ ${p.title}`)) return;
   }
   function computePrivacyRolls(c, totals){
     try{
-      if(!c || (c.privacy||"no")!=="yes") return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
-      const rollLen = clampInt(c.privacyRollLen || 35, 20, 100);
+      if(!c || (c.privacy||"no")!=="yes") return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0, neededMeters:0, matteLabel:""};
+      const rollLenRaw = (c.privacyRollLen===50)?50:toNum(c.privacyRollLen,35);
+      const rollLen = (rollLenRaw>=50)?50:35; // nur 35m oder 50m
       const h = Number(c.height)||160;
       const stripsPerPanel = Math.max(0, Math.round(h/20)); // 100cm→5, 120→6, ...
       const baseLen = toNum(c.privacyLen, 0) || (totals && totals.lengthM) || toNum(c.length, 0) || 0;
       const lengthM = Math.max(0, baseLen);
-      const panels = lengthM ? Math.ceil(lengthM / PANEL_W) : 0;
+      if(!lengthM) return {rolls:0, rollLen, stripsPerPanel, panels:0, totalStripM:0, lengthM:0, neededMeters:0, matteLabel:`${stripsPerPanel}×250cm`};
+      const panels = Math.ceil(lengthM / PANEL_W);
       const totalStripM = panels * stripsPerPanel * PANEL_W; // Meter Sichtschutzstreifen gesamt
-      const rolls = totalStripM ? Math.ceil(totalStripM / rollLen) : 0;
-      return {rolls, rollLen, stripsPerPanel, panels, totalStripM, lengthM};
+      const rolls = Math.ceil(lengthM / rollLen);
+      const matteLabel = `${stripsPerPanel}×250cm`;
+      return {rolls, rollLen, stripsPerPanel, panels, totalStripM, lengthM, neededMeters:lengthM, matteLabel};
     }catch(e){
-      return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0};
+      return {rolls:0, rollLen:35, stripsPerPanel:0, panels:0, totalStripM:0, lengthM:0, neededMeters:0, matteLabel:""};
     }
   }
 
@@ -625,7 +646,9 @@ ${p.title}`)) return;
       if(pr.lengthM>0){
         upsertMat(mats, "Sichtschutz (Länge)", pr.lengthM, "m", "Kunde");
         if(pr.rolls>0){
-          upsertMat(mats, "Sichtschutz‑Rollen", pr.rolls, "Rolle", `${pr.rollLen}m • ${pr.stripsPerPanel}×2,5m je Feld • gesamt ${fmt(pr.totalStripM)}m`);
+          const matt = pr.matteLabel || `${pr.stripsPerPanel}×250cm`;
+          const detail = `${pr.rollLen}m‑Rolle • Matte ${matt} je Feld • Basis ${fmt(pr.lengthM)}m`;
+          upsertMat(mats, "Sichtschutz‑Rollen", pr.rolls, "Rolle", detail);
         }
       }
       // UI-Hint im Kunden-Tab (Auto-Feld)
@@ -658,6 +681,7 @@ ${p.title}`)) return;
     if(p.email) lines.push(`E‑Mail: ${p.email}`);
     if(p.addr) lines.push(`Adresse: ${p.addr}`);
     if(p.objAddr) lines.push(`Objekt: ${p.objAddr}`);
+    if(p.chef && (p.chef.hoursPlanned||"").trim()) lines.push(`Geplante Stunden: ${(p.chef.hoursPlanned||"").trim()}`);
     lines.push("");
     if(t.lengthM) lines.push(`• Länge: ${fmt(t.lengthM)} m`);
     if(c.height) lines.push(`• Höhe: ${c.height} cm`);
@@ -672,8 +696,9 @@ ${p.title}`)) return;
       const pr = computePrivacyRolls(c, t);
       if(pr.lengthM>0){
         const rl = pr.rollLen || 35;
-        const rollsTxt = pr.rolls ? `, ca. ${pr.rolls} Rollen à ${rl}m` : "";
+        const rollsTxt = pr.rolls ? `, Rollen: ${pr.rolls}×${rl}m` : "";
         lines.push(`• Sichtschutz: ja (${fmt(pr.lengthM)} m${rollsTxt})`);
+        lines.push(`• Matte: ${pr.matteLabel||(`${pr.stripsPerPanel}×250cm`)} je Feld`);
       }
     }
     const g=gateSummary(c);
@@ -877,12 +902,11 @@ ${p.title}`)) return;
   }
 
   async function shareInternWithPhotos(p){
-    const text = chefWhatsText(p);
+    const textWithPhotos = chefWhatsText(p, { photoHint:false });
+    const textWithHint = chefWhatsText(p, { photoHint:true });
     const ph = (p && p.chef && Array.isArray(p.chef.photos)) ? p.chef.photos : [];
 
-    // Wenn Fotos vorhanden sind: iPhone/iPad Share-Sheet nutzen (Fotos teilen),
-    // ABER Text vorher in die Zwischenablage kopieren, weil WhatsApp bei "Text+Files"
-    // manchmal nicht in der Auswahl erscheint.
+    // Wenn Fotos vorhanden sind: iPhone/iPad Share-Sheet nutzen (Fotos teilen)
     if(ph.length && navigator.share){
       try{
         const files = [];
@@ -897,9 +921,8 @@ ${p.title}`)) return;
         }
 
         if(files.length && (!navigator.canShare || navigator.canShare({ files }))){
-          // Text kopieren (dann in WhatsApp einfügen)
-          try{ await navigator.clipboard.writeText(text); }catch(_){}
-          await navigator.share({ title:"Intern Fotos", files });
+          try{ await navigator.clipboard.writeText(textWithPhotos); }catch(_){}
+          await navigator.share({ title:"Intern", text:textWithPhotos, files });
           toast("Fotos teilen", "Text ist kopiert → in WhatsApp einfügen");
           return;
         }
@@ -907,11 +930,11 @@ ${p.title}`)) return;
     }
 
     // Desktop/Browser-Fallback: WhatsApp Web mit Text öffnen (Fotos lassen sich dort nicht automatisch anhängen)
-    if(openWhatsAppText(text)){
-      try{ await navigator.clipboard.writeText(text); }catch(_){}
+    if(openWhatsAppText(ph.length ? textWithHint : textWithPhotos)){
+      try{ await navigator.clipboard.writeText(ph.length ? textWithHint : textWithPhotos); }catch(_){}
       if(ph.length){
         try{ await downloadInternPhotosZip(p); }catch(_){}
-        toast("WhatsApp geöffnet", "Text kopiert + Fotos.zip geladen (bitte manuell anhängen)");
+        toast("WhatsApp geöffnet", "Text kopiert + Fotos.zip vorbereitet (bitte manuell anhängen)");
       }else{
         toast("WhatsApp geöffnet", "Text kopiert");
       }
@@ -919,8 +942,8 @@ ${p.title}`)) return;
     }
 
     // Letzter Fallback
-    await shareText(text, "Intern");
-    if(ph.length) toast("Hinweis", "Fotos sind im Backup.json enthalten (WhatsApp‑Text ist kopiert).");
+    await shareText(ph.length ? textWithHint : textWithPhotos, "Intern");
+    if(ph.length) toast("Hinweis", "Fotos separat downloaden und in WhatsApp anhängen.");
   }
 
   async function shareCustomerToWhatsApp(p){
@@ -1114,7 +1137,7 @@ ${p.title}`)) return;
   // -------------------------------------------------------
   // Material: Auto-Sync (aus Kunde) + Sortierung
   // -------------------------------------------------------
-  const MAT_ORDER = ["matten","pfosten","eckpfosten","leisten","beton","other"];
+  const MAT_ORDER = ["matten","pfosten","eckpfosten","leisten","tore","beton","other"];
   function matCategory(name){
     const n = String(name||"").toLowerCase();
     if(n.indexOf("beton")!==-1) return "beton";
@@ -1137,6 +1160,8 @@ ${p.title}`)) return;
     // Leisten vor Pfosten (damit "Pfostenleisten" korrekt einsortiert wird)
     if(n.indexOf("leiste")!==-1 || n.indexOf("u-leist")!==-1 || n.indexOf("u leist")!==-1 || n.indexOf("torleiste")!==-1) return "leisten";
 
+    if(n.indexOf("tor")!==-1 || n.indexOf("gate")!==-1) return "tore";
+
     if(n.indexOf("pfosten")!==-1 && n.indexOf("eck")===-1) return "pfosten";
     return "other";
   }
@@ -1149,6 +1174,33 @@ ${p.title}`)) return;
       return String((a&&a.name)||"").localeCompare(String((b&&b.name)||""),"de",{sensitivity:"base",numeric:true});
     });
     return arr;
+  }
+  function mergeMaterials(list){
+    const arr = sortMaterials(Array.isArray(list)?list:[]);
+    const norm = (s)=>String(s||"").toLowerCase().replace(/\s+/g," ").trim();
+    const byKey = new Map();
+    const out = [];
+    for(const it of arr){
+      if(!it) continue;
+      const unit = it.unit || "Stk";
+      const key = `${norm(it.name)}||${unit.toLowerCase()}`;
+      if(!byKey.has(key)){
+        const baseNote = (it.note||"").trim();
+        const clone = {...it, qty: toNum(it.qty,0), unit, _notes: baseNote ? [baseNote] : []};
+        byKey.set(key, clone);
+        out.push(clone);
+      } else {
+        const tgt = byKey.get(key);
+        tgt.qty = toNum(tgt.qty,0) + toNum(it.qty,0);
+        const n = (it.note||"").trim();
+        if(n && !tgt._notes.includes(n)) tgt._notes.push(n);
+      }
+    }
+    return out.map(it=>{
+      const noteStr = (it._notes && it._notes.length) ? it._notes.join(" | ") : (it.note||"");
+      const { _notes, ...rest } = it;
+      return {...rest, note: noteStr};
+    });
   }
 
   function ensureChefAutoMaterials(p){
@@ -1272,9 +1324,10 @@ ${p.title}`)) return;
     if(cHoursPlanned) p.chef.hoursPlanned=(cHoursPlanned.value||"").trim();
     if(cStatus) p.chef.status=(cStatus.value||"draft");
     p.chef.note=(cNote.value||"").trim();
+    if(kHoursPlanned) kHoursPlanned.value = p.chef.hoursPlanned || "";
     save(); refreshChefPill();
   }
-  [cBagger,cRamme,cHaenger,cNote].forEach(x=>{ x.addEventListener("change", persistChef); x.addEventListener("input", persistChef); });
+  [cBagger,cRamme,cHaenger,cNote,cHoursPlanned,cStatus].forEach(x=>{ if(!x) return; x.addEventListener("change", persistChef); x.addEventListener("input", persistChef); });
 
   function refreshChefPill(){
     const p=currentProject(); if(!p) return;
@@ -1466,35 +1519,63 @@ ${p.title}`)) return;
     }
   }
 
-  function chefWhatsText(p){
+  function chefWhatsText(p, opts={}){
+    const c = p.customer || {};
+    const t = computeTotals(c);
+    const pr = computePrivacyRolls(c, t);
+    const g = gateSummary(c);
+    const cc = computeConcrete(c);
+    const hoursTxt = (p.chef && (p.chef.hoursPlanned||"").trim()) ? (p.chef.hoursPlanned||"").trim() : "";
+    const mats = mergeMaterials(p.chef.materials||[]);
     const lines=[];
     lines.push(`INTERN – ${p.title}`);
+    lines.push("== Kunde ==");
+    lines.push(`Name: ${p.title}`);
     if(p.plannedDate) lines.push(`Ausführung: ${p.plannedDate}`);
+    if(p.createdAt) lines.push(`Erstellt: ${(p.createdAt||"").slice(0,10)}`);
     if(p.phone) lines.push(`Tel: ${p.phone}`);
+    if(p.email) lines.push(`E‑Mail: ${p.email}`);
     if(p.addr) lines.push(`Kunde: ${p.addr}`);
     if(p.objAddr) lines.push(`Objekt: ${p.objAddr}`);
-    if(p.chef && (p.chef.hoursPlanned||"").trim()) lines.push(`Geplante Stunden: ${(p.chef.hoursPlanned||"").trim()}`);
+    if(hoursTxt) lines.push(`Geplante Stunden: ${hoursTxt}`);
     if(p.chef && (p.chef.status||"") && p.chef.status!=="draft") lines.push(`Status: ${p.chef.status}`);
+
     lines.push("");
-    const custNote = (p.customer && (p.customer.note||"").trim()) ? p.customer.note.trim() : "";
-    if(custNote){
-      lines.push("Kunden‑Notiz:");
-      lines.push(custNote);
-      lines.push("");
+    lines.push("== Zaun / Abschnitte ==");
+    lines.push(`Länge: ${fmt(t.lengthM)} m`);
+    lines.push(`Höhe: ${c.height||""} cm`);
+    if(c.system){
+      let sys=c.system;
+      if(c.system==="Holz" && c.woodType) sys += ` (${c.woodType})`;
+      if(c.system==="WPC" && c.wpcType) sys += ` (${c.wpcType})`;
+      lines.push(`System: ${sys}`);
     }
-    const eq=[];
-    if(p.chef.bagger==="yes") eq.push("Bagger");
-    if(p.chef.ramme==="yes") eq.push("Ramme");
-    if(p.chef.haenger==="yes") eq.push("Hänger");
-    if(p.chef.handbohr==="yes") eq.push("Handbohrgerät");
-    if(p.chef.schubkarre==="yes") eq.push("Schubkarre");
-    if(eq.length){
-      lines.push("Geräte:");
-      eq.forEach(x=>lines.push(`- ${x}`));
-      lines.push("");
+    if(c.color) lines.push(`Farbe: ${c.color}`);
+    const slopeTxt=({flat:"gerade",slope:"abschüssig",hang:"am Hang",steep:"steil"})[c.slopeType] || "gerade";
+    if(c.slopeType) lines.push(`Gelände: ${slopeTxt}${(c.slopePct||"").trim()?(" ("+c.slopePct.trim()+"%)"):""}`);
+    if(clampInt(c.corners||0)>0) lines.push(`Ecken: ${clampInt(c.corners||0)}`);
+    if((c.privacy||"no")==="yes"){
+      const rl = pr.rollLen || 35;
+      const rollTxt = pr.rolls ? `• Rollenanzahl: ${pr.rolls} (à ${rl}m)` : "• Rollenanzahl: 0";
+      lines.push("Sichtschutz: ja");
+      lines.push(`• Länge: ${fmt(pr.lengthM)} m`);
+      lines.push(rollTxt);
+      lines.push(`• Matte: ${pr.matteLabel||(`${pr.stripsPerPanel}×250cm`)} je Feld`);
+    } else {
+      lines.push("Sichtschutz: nein");
     }
-    const mats=sortMaterials(p.chef.materials||[]);
-    lines.push("Material (intern):");
+    if(g.total){
+      lines.push(`Tore: ${gateTypeLabel(c.gateType)} (${g.total} Stk)`);
+      g.rows.forEach(r=>lines.push(`• H${r.height} / B${r.widthCm}cm × ${r.qty}`));
+    }
+    if(cc && c.length){
+      const unit=(c.concreteMode==="m3")?"m³":"Sack";
+      const qty=(c.concreteMode==="m3")?cc.m3:cc.sacks;
+      lines.push(`Beton (auto): ${fmtN(qty,(unit==="m³")?3:1)} ${unit}`);
+    }
+
+    lines.push("");
+    lines.push("== Materialliste (final) ==");
     if(!mats.length) lines.push("(leer)");
     else mats.forEach(it=>{
       const q=fmt(toNum(it.qty,0));
@@ -1502,12 +1583,37 @@ ${p.title}`)) return;
       const note=(it.note||"").trim();
       lines.push(`- ${it.name}: ${q} ${u}${note?(" ("+note+")"):""}`);
     });
-    const ph=p.chef.photos||[];
-    if(ph.length){ lines.push(""); lines.push(`Fotos: ${ph.length} (im Backup.json)`); }
-    if((p.chef.note||"").trim()){
+
+    const eq=[];
+    if(p.chef.bagger==="yes") eq.push("Bagger");
+    if(p.chef.ramme==="yes") eq.push("Ramme");
+    if(p.chef.haenger==="yes") eq.push("Hänger");
+    if(p.chef.handbohr==="yes") eq.push("Handbohrgerät");
+    if(p.chef.schubkarre==="yes") eq.push("Schubkarre");
+    if(eq.length){
       lines.push("");
-      lines.push("Hinweise:");
-      lines.push(p.chef.note.trim());
+      lines.push("== Geräte ==");
+      eq.forEach(x=>lines.push(`- ${x}`));
+    }
+
+    const custNote = (p.customer && (p.customer.note||"").trim()) ? p.customer.note.trim() : "";
+    const teamNote = (p.chef && (p.chef.note||"").trim()) ? p.chef.note.trim() : "";
+    if(custNote || teamNote){
+      lines.push("");
+      lines.push("== Notizen ==");
+      if(custNote) lines.push(`Kunde: ${custNote}`);
+      if(teamNote) lines.push(`Team: ${teamNote}`);
+    }
+
+    const ph=p.chef.photos||[];
+    if(ph.length){
+      lines.push("");
+      lines.push(`== Fotos (${ph.length}) ==`);
+      if(opts.photoHint){
+        lines.push("Fotos separat downloaden und in WhatsApp anhängen (Button „Fotos.zip“ nutzen).");
+      } else {
+        lines.push("Fotos sind angehängt oder im Export enthalten.");
+      }
     }
     return lines.join("\n");
 }
@@ -1532,50 +1638,63 @@ ${p.title}`)) return;
     });
   }
 
-  // Backup
-  const btnBackup = el("btnBackup");
-  if(btnBackup) btnBackup.addEventListener("click", ()=>{
-    const data={ exportedAt: nowISO(), tool:"Zaunteam Zaunplaner", version:APP_VERSION, state };
-    downloadText(JSON.stringify(data,null,2), "Zaunplaner_Backup.json", "application/json");
-  });
-
-  // JSON Import (für Handy ↔ PC Transfer)
+  // JSON Export/Import
+  const btnExportJson = el("btnExportJson");
   const btnImportJson = el("btnImportJson");
   const fileImportJson = el("fileImportJson");
 
-  function normalizeImportedState(raw){
-    // akzeptiert entweder {state:...} oder direkt den state
-    const s = (raw && raw.state) ? raw.state : raw;
-    if(!s || typeof s!=="object") return null;
+  function serializeState(){
+    const clone = JSON.parse(JSON.stringify(state||{}));
+    clone.version = APP_VERSION;
+    clone.schemaVersion = SCHEMA_VERSION;
+    clone.projects = Array.isArray(clone.projects) ? clone.projects.map(ensureProjectDefaults) : [];
+    return clone;
+  }
 
-    // Minimalstruktur
+  function buildExportPayload(){
+    return {
+      schemaVersion: SCHEMA_VERSION,
+      appVersion: APP_VERSION,
+      tool: "Zaunteam Zaunplaner",
+      exportedAt: nowISO(),
+      state: serializeState()
+    };
+  }
+
+  function normalizeImportedState(raw){
+    const schema = toNum(raw && raw.schemaVersion, 0);
+    if(schema && schema>SCHEMA_VERSION){
+      return { error: `Schema v${schema} nicht unterstützt (erwartet v${SCHEMA_VERSION} oder älter).` };
+    }
+    const s = (raw && raw.state) ? raw.state : raw;
+    if(!s || typeof s!=="object") return { error: "Datenformat unbekannt" };
+
     const out = {
       version: APP_VERSION,
-      projects: Array.isArray(s.projects) ? s.projects : [],
+      schemaVersion: SCHEMA_VERSION,
+      projects: Array.isArray(s.projects) ? s.projects.map(ensureProjectDefaults) : [],
       selectedProjectId: s.selectedProjectId || null,
       ui: (s.ui && typeof s.ui==="object") ? s.ui : {},
     };
 
-    // Bewahre optionale Felder, falls vorhanden
     for(const k of ["notes","settings","meta"]){
       if(s[k]!==undefined) out[k]=s[k];
     }
-    return out;
+    return { state: out };
   }
 
   function doImportJsonText(txt){
     let parsed=null;
     try{ parsed = JSON.parse(txt); }catch(e){ toast("❌ Import fehlgeschlagen: keine gültige JSON"); return; }
-    const next = normalizeImportedState(parsed);
-    if(!next){ toast("❌ Import fehlgeschlagen: Datenformat unbekannt"); return; }
+    const norm = normalizeImportedState(parsed);
+    if(!norm || norm.error){ toast("❌ Import fehlgeschlagen" + (norm && norm.error ? (": " + norm.error) : "")); return; }
+    const next = norm.state;
 
     // Safety: vorher Backup in lastgood schreiben
     try{ localStorage.setItem(STORAGE_KEY+"_lastgood", JSON.stringify(state)); }catch(e){}
 
-    // Übernehmen
     state = next;
 
-    // Valid selectedProjectId
     if(state.selectedProjectId && !state.projects.find(p=>p.id===state.selectedProjectId)){
       state.selectedProjectId = state.projects[0]?.id || null;
     }
@@ -1585,25 +1704,51 @@ ${p.title}`)) return;
     toast("✅ Import OK – Daten übernommen");
   }
 
+  function handleImportFile(file){
+    if(!file) return;
+    const reader = new FileReader();
+    reader.onload = ()=>{ doImportJsonText(reader.result||""); };
+    reader.onerror = ()=>toast("❌ Import fehlgeschlagen");
+    reader.readAsText(file);
+  }
+
+  if(btnExportJson){
+    btnExportJson.addEventListener("click", ()=>{
+      const payload = buildExportPayload();
+      const title = currentProject()?.title || "Zaunplaner";
+      downloadText(JSON.stringify(payload,null,2), fileSafe(`${title}_Export.json`), "application/json");
+      toast("Export erstellt","JSON gespeichert");
+    });
+  }
+
   if(btnImportJson && fileImportJson){
     btnImportJson.addEventListener("click", ()=> fileImportJson.click());
     fileImportJson.addEventListener("change", async (ev)=>{
       const f = ev.target.files && ev.target.files[0];
       if(!f) return;
-      try{
-        const txt = await f.text();
-        doImportJsonText(txt);
-      }catch(e){
-        toast("❌ Import fehlgeschlagen");
-      } finally {
-        try{ ev.target.value=""; }catch(e){}
-      }
+      handleImportFile(f);
+      try{ ev.target.value=""; }catch(e){}
     });
   }
+  document.addEventListener("dragover", (ev)=>{
+    if(ev.dataTransfer && ev.dataTransfer.types && ev.dataTransfer.types.includes("Files")){
+      ev.preventDefault();
+      ev.dataTransfer.dropEffect="copy";
+    }
+  });
+  document.addEventListener("drop", (ev)=>{
+    if(!ev.dataTransfer) return;
+    const file = Array.from(ev.dataTransfer.files||[]).find(f=>f && (f.type==="application/json" || (f.name||"").toLowerCase().endsWith(".json")));
+    if(file){
+      ev.preventDefault();
+      handleImportFile(file);
+    }
+  });
 
   el("btnCSV").addEventListener("click", ()=>{
     const p=currentProject(); if(!p) return toast("Kein Kunde");
-    const rows=[["Kundenname","Datum","Material","Menge","Einheit","Notiz"]].concat((p.chef.materials||[]).map(it=>[p.title,p.plannedDate||"",it.name||"",String((it.qty!=null)?it.qty:""),it.unit||"",it.note||""]));
+    const matsForCsv = mergeMaterials(p.chef.materials||[]);
+    const rows=[["Kundenname","Datum","Material","Menge","Einheit","Notiz"]].concat(matsForCsv.map(it=>[p.title,p.plannedDate||"",it.name||"",String((it.qty!=null)?it.qty:""),it.unit||"",it.note||""]));
     const csv=rows.map(r=>r.map(cell=>`"${String(cell).replace(/"/g,'""')}"`).join(";")).join("\n");
     downloadText(csv, fileSafe(`${p.title}_Material.csv`), "text/csv");
   });
@@ -1644,10 +1789,11 @@ ${p.title}`)) return;
     updateConcretePlaceholder();
     renderConcreteAutoUI(c);
     kNote.value=c.note||"";
+    if(kHoursPlanned) kHoursPlanned.value = (p.chef && p.chef.hoursPlanned) ? p.chef.hoursPlanned : "";
     ensureGateDefaults(c);
     renderGateUI();
     toggleMaterialDependent();
-    togglePrivacyDependent();
+    togglePrivacyControls();
     refreshKpi();
   }
 
@@ -1660,6 +1806,8 @@ ${p.title}`)) return;
     if(el("cHandbohr")) el("cHandbohr").value=p.chef.handbohr||"no";
     if(el("cSchubkarre")) el("cSchubkarre").value=p.chef.schubkarre||"no";
     cHaenger.value=p.chef.haenger||"no";
+    if(cHoursPlanned) cHoursPlanned.value = (p.chef.hoursPlanned||"");
+    if(cStatus) cStatus.value = (p.chef.status||"draft");
     if(el("cCustomerNote")) el("cCustomerNote").value = (p.customer && p.customer.note) ? p.customer.note : "";
     cNote.value=p.chef.note||"";
     ensureChefAutoMaterials(p);
@@ -1686,5 +1834,7 @@ ${p.title}`)) return;
   migrateLegacy();
   // Always keep version current
   state.version = APP_VERSION;
+  state.schemaVersion = SCHEMA_VERSION;
+  state.projects = (state.projects||[]).map(ensureProjectDefaults);
   refreshAll();
 })();

@@ -304,8 +304,8 @@
           <span class="pill" id="projCountPill">0</span>
         </div>
         <div class="row">
-          <button class="btn small" id="btnBackup" type="button">Backup.json</button>
-      <button id="btnImportJson" class="btn" type="button">Import.json</button>
+          <button class="btn small" id="btnExportJson" type="button">Export JSON</button>
+      <button id="btnImportJson" class="btn" type="button">Import JSON</button>
       <input id="fileImportJson" type="file" accept="application/json,.json" style="display:none" />
           <button class="btn small" id="btnCSV" type="button">Material CSV</button>
           <button class="btn small bad" id="btnReset" type="button">Reset</button>
@@ -549,6 +549,17 @@
       <label>Kunden‑Notiz</label>
       <textarea id="kNote" placeholder="Notizen…"></textarea>
 
+      <div class="grid2">
+        <div>
+          <label>Geplante Stunden (Chef)</label>
+          <input id="kHoursPlanned" inputmode="decimal" placeholder="wird im Chef‑Tab gepflegt" readonly />
+        </div>
+        <div>
+          <label>&nbsp;</label>
+          <div class="hint">Im Chef‑Tab bearbeitbar, hier nur Ansicht.</div>
+        </div>
+      </div>
+
       <div class="row" style="margin-top:10px;">
         <button class="btn good dark" id="btnKCalc" type="button">Material berechnen → Chef</button>
         <button class="btn blue" id="btnKDown" type="button">Kunden‑Text Download</button>
@@ -720,7 +731,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js?v=1.4.31" defer></script></script>
+  <script src="./app.js?v=1.4.32" defer></script></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
@@ -735,7 +746,7 @@
 
       try {
         // iOS/PWA: SW URL mit Version -> garantiertes Update
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.31", { updateViaCache: "none" });
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.32", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});
@@ -811,4 +822,3 @@
       </div>
       <div class="hint" style="margin-top:8px;">Hinweis: Deine Kunden bleiben erhalten.</div>
     </div>
-
