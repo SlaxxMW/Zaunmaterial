@@ -60,7 +60,7 @@
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.35";
+    const APP_VERSION = "1.4.36";
   const APP_BUILD = "2025-12-19";
 let state = { version:"1.4.33", selectedProjectId:null, projects:[], meta:{ lastSavedAt:"", lastBackupAt:"" } };
 
@@ -739,18 +739,31 @@ function computeTotals(c){
     if(!Array.isArray(c.gates)) c.gates=[];
   }
   function gateTypeLabel(t){
-    return ({gate1:"1‑flügelig", gate2:"2‑flügelig", gate3:"3‑flügelig", slide:"Schiebetor", none:"kein Tor"})[t] || (t||"Tor");
+    return ({gate1:"1‑flügelig", gate2:"2‑flügelig", gate3:"3‑flügelig", none:"kein Tor"})[t] || (t||"Tor");
   }
   function gateSummary(c){
     ensureGateDefaults(c);
     if(!c || c.gateType==="none") return {total:0, rows:[], text:""};
-    const rows=(c.gates||[]).map(g=>({
-      height:Number(g.height)||160,
-      widthCm: clampInt((g.widthCm!=null ? g.widthCm : (g.width!=null ? g.width : 125)), 50, 400),
-      qty: clampInt((g.qty!=null ? g.qty : (g.count!=null ? g.count : 1)), 0, 20),
-    })).filter(g=>g.qty>0);
-    const total=rows.reduce((s,g)=>s+g.qty,0);
-    const text=rows.map(g=>`H${g.height} / B${g.widthCm}cm × ${g.qty}`).join(" | ");
+    const n = (c.gateType==="gate2") ? 2 : (c.gateType==="gate3") ? 3 : 1;
+
+    const rows=(c.gates||[]).map(g=>{
+      const gg = normalizeGateRow(c, g);
+      const opening = clampInt(gg.openingCm, 50, 600);
+      const leaves = Array.isArray(gg.leaves) ? gg.leaves.slice(0,n) : [opening];
+      const split = gg.split || (n>1?"equal":"single");
+      const leafTxt = (n===1) ? `${opening}cm` : (split==="equal" ? `${n}×${Math.round(opening/n)}cm` : leaves.join("+")+"cm");
+      return {
+        height:Number(gg.height)||160,
+        openingCm: opening,
+        leaves,
+        split,
+        qty: clampInt(gg.qty, 0, 20),
+        text: `${gateTypeLabel(c.gateType)} — ${opening}cm LW (${leafTxt}) • H ${Number(gg.height)||160}cm`
+      };
+    }).filter(g=>g.qty>0);
+
+    const total = rows.reduce((a,g)=>a+(Number(g.qty)||0),0);
+    const text = rows.map(r=>`${r.qty}× ${r.text}`).join("\n");
     return {total, rows, text};
   }
 
@@ -1250,37 +1263,173 @@ function computeTotals(c){
   // Gate UI (Varianten)
   const GATE_QTYS = Array.from({length:11}, (_,i)=>i); // 0..10
   const GATE_HEIGHTS = [60,80,100,120,140,160,180,200];
-  function gateDefaultRow(c){
-    let h = Number(c.height)||160;
+  
+  function gateLeafCount(t){
+    if(t==="gate2") return 2;
+    if(t==="gate3") return 3;
+    return 1;
+  }
+  function normalizeGateRow(c, g){
+    if(!c) return g;
+    const t = c.gateType || "gate1";
+    const n = gateLeafCount(t);
+    if(!g) g = {};
+    // Höhe (60-200 in 20er Schritten)
+    let h = Number(g.height)||Number(c.height)||160;
     h = Math.round(h/20)*20;
     h = Math.max(60, Math.min(200, h));
-    return {height:h, widthCm:125, qty:1};
+    g.height = h;
+
+    // Menge
+    g.qty = clampInt((g.qty!=null ? g.qty : (g.count!=null ? g.count : 1)), 0, 20);
+
+    // Öffnung (Lichte Weite) in cm
+    let opening = clampInt((g.openingCm!=null ? g.openingCm : (g.widthCm!=null ? g.widthCm : (g.width!=null ? g.width : 125))), 50, 600);
+
+    // Split / Flügel
+    let split = (g.split==="asym" || g.split==="equal") ? g.split : (n>1 ? "equal" : "single");
+
+    // Leaves
+    let leaves = Array.isArray(g.leaves) ? g.leaves.map(x=>clampInt(x, 30, 600)) : [];
+
+    if(n===1){
+      split = "single";
+      opening = clampInt(opening, 50, 600);
+      leaves = [opening];
+    }else{
+      if(split==="equal"){
+        const base = Math.max(1, Math.floor(opening / n));
+        leaves = Array(n).fill(base);
+        let rem = opening - base*n;
+        let i=0;
+        while(rem>0){ leaves[i%n] += 1; i++; rem--; }
+      }else{
+        if(leaves.length!==n) leaves = Array(n).fill(0);
+        const sum = leaves.reduce((a,b)=>a+(Number(b)||0),0);
+        if(sum>0) opening = clampInt(sum, 50, 600);
+        else{
+          // fallback equal
+          const base = Math.max(1, Math.floor(opening / n));
+          leaves = Array(n).fill(base);
+          let rem = opening - base*n;
+          let i=0;
+          while(rem>0){ leaves[i%n] += 1; i++; rem--; }
+          split="equal";
+        }
+      }
+    }
+
+    g.openingCm = opening;
+    g.leaves = leaves;
+    g.split = split;
+    return g;
   }
+
+  function gateDefaultRow(c){
+    const t = (c && c.gateType) ? c.gateType : "gate1";
+    const n = gateLeafCount(t);
+    let h = (c && c.height) ? Number(c.height) : 160;
+    h = Math.round(h/20)*20;
+    h = Math.max(60, Math.min(200, h));
+
+    let opening = 125;
+    let leaves = [125];
+    let split = "single";
+
+    if(n===2){
+      opening = 250;
+      leaves = [125,125];
+      split = "equal";
+    }else if(n===3){
+      opening = 300;
+      leaves = [100,100,100];
+      split = "equal";
+    }
+
+    return normalizeGateRow({gateType:t, height:h}, {height:h, openingCm: opening, leaves, split, qty:1});
+  }
+
   function renderGateUI(){
     const p=currentProject(); if(!p) return;
     const c=p.customer; ensureGateDefaults(c);
     if(!kGateType || !gateVariants || !gateRows) return;
+
+    // Sicherstellen: gültige Werte
+    if(!["none","gate1","gate2","gate3"].includes(c.gateType)) c.gateType="none";
     kGateType.value = c.gateType || "none";
+
     const active = (kGateType.value !== "none");
     gateVariants.style.display = active ? "" : "none";
     if(!active){ gateRows.innerHTML=""; return; }
+
+    const n = gateLeafCount(c.gateType);
+    gateVariants.innerHTML = `
+      <div class="pill">Maße immer als <b>Lichte Weite</b> (cm)</div>
+      <div class="pill">${gateTypeLabel(c.gateType)}: ${n} Flügel</div>
+      <div class="pill">Gleichschenkelig oder asymmetrisch – alles editierbar</div>
+    `;
+
+    // Normalize bestehende Zeilen
+    if(!Array.isArray(c.gates)) c.gates=[];
+    c.gates = c.gates.map(g=>normalizeGateRow(c,g)).filter(g=>g.qty>0 || true);
+
     if(c.gates.length===0) c.gates=[gateDefaultRow(c)];
+
     gateRows.innerHTML="";
     c.gates.forEach((g, idx)=>gateRows.appendChild(buildGateRow(g, idx)));
   }
+
   function buildGateRow(g, idx){
+    const p=currentProject(); if(!p) return document.createElement("div");
+    const c=p.customer; ensureGateDefaults(c);
+
+    g = normalizeGateRow(c, g);
+
+    const n = gateLeafCount(c.gateType);
+
     const row=document.createElement("div");
     row.className="gateRow";
     row.dataset.idx=String(idx);
+
+    // Leaf inputs HTML
+    let leafHtml = "";
+    if(n===1){
+      leafHtml = `
+        <div>
+          <label>Lichte Weite (cm)</label>
+          <input class="gateOpen" list="gateWidthList" inputmode="numeric" placeholder="z.B. 100 / 125 / 150 / 200" />
+        </div>
+      `;
+    }else{
+      const leafInputs = Array.from({length:n}).map((_,i)=>`
+        <div>
+          <label>Flügel ${i+1} (cm)</label>
+          <input class="gateLeaf" data-i="${i}" list="gateWidthList" inputmode="numeric" placeholder="cm" />
+        </div>
+      `).join("");
+
+      leafHtml = `
+        <div>
+          <label>Lichte Weite gesamt (cm)</label>
+          <input class="gateOpen" list="gateWidthList" inputmode="numeric" placeholder="z.B. 250 / 300 / 350" />
+        </div>
+        <div>
+          <label>Aufteilung</label>
+          <select class="gateSplit">
+            <option value="equal">gleichschenkelig</option>
+            <option value="asym">asymmetrisch</option>
+          </select>
+        </div>
+        ${leafInputs}
+      `;
+    }
+
     row.innerHTML = `
       <div>
         <label>Tor‑Höhe</label>
         <select class="gateH"></select>
       </div>
-      <div>
-        <label>Breite (cm)</label>
-        <input class="gateW" list="gateWidthList" inputmode="numeric" placeholder="80 / 100 / 125 / 150 / 200" />
-      </div>
+      ${leafHtml}
       <div>
         <label>Menge</label>
         <select class="gateQ"></select>
@@ -1289,21 +1438,118 @@ function computeTotals(c){
         <button class="btn bad" type="button" title="Variante löschen">✕</button>
       </div>
     `;
+
     const selH=row.querySelector(".gateH");
     fillHeights(selH, GATE_HEIGHTS);
-    const hh = Math.max(60, Math.min(200, Math.round((Number(g.height)||160)/20)*20));
-    selH.value=String(hh);
-
-    const inpW=row.querySelector(".gateW");
-    inpW.value=String(clampInt((g.widthCm!=null ? g.widthCm : (g.width!=null ? g.width : 125)), 50, 400));
+    selH.value=String(g.height);
 
     const selQ=row.querySelector(".gateQ");
-    fillSelect(selQ, GATE_QTYS.map(String), String(clampInt((g.qty!=null ? g.qty : (g.count!=null ? g.count : 1)), 0, 20)));
+    selQ.innerHTML="";
+    for(let i=0;i<=10;i++){
+      const o=document.createElement("option");
+      o.value=String(i); o.textContent=String(i);
+      selQ.appendChild(o);
+    }
+    selQ.value=String(g.qty);
 
-    const sync = ()=>{ persistGatesFromUI(); };
-    [selH, inpW, selQ].forEach(elm=>{
-      elm.addEventListener("input", sync);
-      elm.addEventListener("change", sync);
+    const inpOpen=row.querySelector(".gateOpen");
+    if(inpOpen) inpOpen.value = String(g.openingCm||"");
+
+    const selSplit=row.querySelector(".gateSplit");
+    if(selSplit) selSplit.value = (g.split==="asym" ? "asym" : "equal");
+
+    // Set leaf values
+    const leafEls = row.querySelectorAll(".gateLeaf");
+    if(leafEls && leafEls.length){
+      leafEls.forEach(elm=>{
+        const i = clampInt(elm.getAttribute("data-i"),0,99);
+        elm.value = String((g.leaves && g.leaves[i]!=null) ? g.leaves[i] : "");
+      });
+    }
+
+    function syncFromUI(src){
+      const p=currentProject(); if(!p) return;
+      const c=p.customer; ensureGateDefaults(c);
+      const i=Number(row.dataset.idx)||0;
+      const cur = normalizeGateRow(c, c.gates[i] || g);
+
+      // Höhe
+      cur.height = clampInt(selH.value, 60, 200);
+
+      // Menge
+      cur.qty = clampInt(selQ.value, 0, 20);
+
+      // Öffnung
+      const openVal = clampInt(inpOpen ? inpOpen.value : cur.openingCm, 50, 600);
+
+      if(gateLeafCount(c.gateType)===1){
+        cur.openingCm = openVal;
+        cur.leaves = [openVal];
+        cur.split = "single";
+      }else{
+        let split = selSplit ? selSplit.value : cur.split;
+        if(split!=="asym") split="equal";
+        cur.split = split;
+
+        if(src && src.classList && src.classList.contains("gateLeaf")){
+          // Leaf geändert => asym
+          cur.split = "asym";
+          if(selSplit) selSplit.value = "asym";
+        }
+
+        // Leaves aus UI
+        let leaves = [];
+        const leafEls = row.querySelectorAll(".gateLeaf");
+        leafEls.forEach(elm=>{
+          leaves.push(clampInt(elm.value, 0, 600));
+        });
+
+        cur.openingCm = openVal;
+
+        if(cur.split==="equal"){
+          // Opening treibt Leaves
+          const n = gateLeafCount(c.gateType);
+          const base = Math.max(1, Math.floor(cur.openingCm / n));
+          leaves = Array(n).fill(base);
+          let rem = cur.openingCm - base*n;
+          let k=0; while(rem>0){ leaves[k%n]+=1; k++; rem--; }
+          // UI updaten
+          leafEls.forEach((elm,idx)=>{ elm.value = String(leaves[idx]||""); });
+        }else{
+          // Asym: leaves treiben opening
+          const sum = leaves.reduce((a,b)=>a+(Number(b)||0),0);
+          if(sum>0){
+            cur.openingCm = clampInt(sum, 50, 600);
+            if(inpOpen) inpOpen.value = String(cur.openingCm);
+          }
+        }
+
+        cur.leaves = leaves.map(x=>clampInt(x, 30, 600));
+      }
+
+      c.gates[i] = normalizeGateRow(c, cur);
+      save(); refreshKpi(); renderConcreteAutoUI(c); ensureChefAutoMaterials(p); refreshChefPill();
+    }
+
+    // Listeners
+    [selH, selQ].forEach(elm=>{
+      if(!elm) return;
+      elm.addEventListener("change", ()=>syncFromUI(elm));
+    });
+    if(inpOpen){
+      inpOpen.addEventListener("input", ()=>syncFromUI(inpOpen));
+      inpOpen.addEventListener("change", ()=>syncFromUI(inpOpen));
+    }
+    if(selSplit){
+      selSplit.addEventListener("change", ()=>{
+        // Beim Wechsel auf equal: Leaves automatisch setzen
+        syncFromUI(selSplit);
+      });
+    }
+    const leafEls2=row.querySelectorAll(".gateLeaf");
+    leafEls2.forEach(elm=>{
+      elm.addEventListener("input", ()=>syncFromUI(elm));
+      elm.addEventListener("change", ()=>syncFromUI(elm));
     });
 
     row.querySelector(".gateAct button").addEventListener("click", ()=>{
@@ -1317,6 +1563,7 @@ function computeTotals(c){
 
     return row;
   }
+
   function persistGatesFromUI(){
     const p=currentProject(); if(!p) return;
     const c=p.customer; ensureGateDefaults(c);
@@ -1343,8 +1590,20 @@ function computeTotals(c){
     kGateType.addEventListener("change", ()=>{
       const p=currentProject(); if(!p) return;
       const c=p.customer; ensureGateDefaults(c);
+      const prev = c.gateType || "none";
       c.gateType = kGateType.value || "none";
-      if(c.gateType==="none"){ c.gates=[]; }
+      if(c.gateType==="none"){
+        c.gates=[];
+      }else{
+        // wenn Flügel-Anzahl wechselt, sichere Default-Variante setzen (sonst bleiben alte Felder)
+        const prevN = (prev==="gate2")?2:(prev==="gate3")?3:(prev==="gate1")?1:0;
+        const newN  = (c.gateType==="gate2")?2:(c.gateType==="gate3")?3:1;
+        if(!Array.isArray(c.gates) || c.gates.length===0 || prevN!==newN){
+          c.gates=[gateDefaultRow(c)];
+        }else{
+          c.gates = c.gates.map(g=>normalizeGateRow(c,g));
+        }
+      }
       save(); renderGateUI(); refreshKpi();
     });
   }
@@ -1413,7 +1672,7 @@ function computeTotals(c){
     if(!Array.isArray(p.chef.materials)) p.chef.materials = [];
     const c = p.customer;
 
-    // Pfostenlänge (einfach/robust): Zaunhöhe + 60 cm (Einbetonierung/Reserve)
+    // Pfostenlänge (robust): Zaunhöhe + 60 cm. Bei Doppelstab reicht die Zaunhöhe als Angabe (Label).
     function postLenCm(h){ h = clampInt(h||160, 60, 300); return clampInt(h + 60, 120, 400); }
 
     // Segmente aktiv?
@@ -1422,14 +1681,15 @@ function computeTotals(c){
 
     // Beton (gesamt)
     let cc = null;
-    try{ cc = computeConcrete(c); }catch(_{}){}
+    try{ cc = computeConcrete(c); }catch(_){ }
     const concreteQty = (c.concreteMode==="m3") ? (cc ? cc.m3 : 0) : (cc ? cc.sacks : 0);
     const concreteUnit = (c.concreteMode==="m3") ? "m³" : "Sack";
 
-    // Ecken (gesamt) — Länge nach max. Zaunhöhe
+    // Ecken (gesamt) — nach max. Zaunhöhe
     const corners = clampInt(c.corners||0, 0, 99);
     const maxH = segs.length ? Math.max(...segs.map(s=>clampInt(s.height||c.height||160))) : clampInt(c.height||160);
     const cornerPostLen = postLenCm(maxH);
+    const baseSystem = (c.system||"Doppelstab");
 
     const auto = [];
 
@@ -1441,33 +1701,53 @@ function computeTotals(c){
         const panels = len ? Math.ceil(len / PANEL_W) : 0;
         const posts = panels ? (panels + 1) : 0;
 
-        const sysObj = { system: (s.system||c.system||"Doppelstab"), height: h };
+        const sys = (s.system||c.system||"Doppelstab");
+        const sysObj = { system: sys, height: h };
         const matLbl = `Abschnitt ${label} — ${sysLabel(sysObj)}`;
-        const pLen = postLenCm(h);
 
         auto.push({ k:`auto_matten_${label}`, label: matLbl, qty: panels, unit:"Stk" });
-        auto.push({ k:`auto_pfosten_${label}_${pLen}`, label:`Abschnitt ${label} — Pfosten ${pLen} cm`, qty: posts, unit:"Stk" });
-        auto.push({ k:`auto_leisten_${label}`, label:`Abschnitt ${label} — Pfostenleisten`, qty: posts, unit:"Stk" });
+
+        if(sys==="Doppelstab"){
+          auto.push({ k:`auto_pfosten_${label}_${h}`, label:`Abschnitt ${label} — Pfosten ${h} cm`, qty: posts, unit:"Stk" });
+          auto.push({ k:`auto_leisten_${label}_${h}`, label:`Abschnitt ${label} — Pfostenleisten ${h} cm`, qty: posts, unit:"Stk" });
+        }else{
+          const pLen = postLenCm(h);
+          auto.push({ k:`auto_pfosten_${label}_${pLen}`, label:`Abschnitt ${label} — Pfosten ${pLen} cm`, qty: posts, unit:"Stk" });
+          auto.push({ k:`auto_leisten_${label}`, label:`Abschnitt ${label} — Pfostenleisten`, qty: posts, unit:"Stk" });
+        }
       }
       if(corners>0){
-        auto.push({ k:`auto_eckpfosten_${cornerPostLen}`, label:`Eckpfosten ${cornerPostLen} cm`, qty: corners, unit:"Stk" });
-        auto.push({ k:`auto_leisten_ecken`, label:`Pfostenleisten (Ecken)`, qty: corners, unit:"Stk" });
+        if(baseSystem==="Doppelstab"){
+          auto.push({ k:`auto_eckpfosten_${maxH}`, label:`Eckpfosten ${maxH} cm`, qty: corners, unit:"Stk" });
+          auto.push({ k:`auto_leisten_ecken_${maxH}`, label:`Pfostenleisten (Ecken) ${maxH} cm`, qty: corners, unit:"Stk" });
+        }else{
+          auto.push({ k:`auto_eckpfosten_${cornerPostLen}`, label:`Eckpfosten ${cornerPostLen} cm`, qty: corners, unit:"Stk" });
+          auto.push({ k:`auto_leisten_ecken`, label:`Pfostenleisten (Ecken)`, qty: corners, unit:"Stk" });
+        }
       }
     }else{
       const t = computeTotals(c);
-      const pLen = postLenCm(clampInt(c.height||160));
+      const h = clampInt(c.height||160);
+      const sys = (c.system||"Doppelstab");
+      const pLen = postLenCm(h);
+
       auto.push({ k:"auto_matten", label: sysLabel(c), qty:t.panels||0, unit:"Stk" });
-      auto.push({ k:`auto_pfosten_${pLen}`, label:`Pfosten ${pLen} cm`, qty:t.posts||0, unit:"Stk" });
-      auto.push({ k:`auto_eckpfosten_${pLen}`, label:`Eckpfosten ${pLen} cm`, qty:t.cornerPosts||0, unit:"Stk" });
-      auto.push({ k:"auto_leisten", label:"Pfostenleisten", qty:t.postStrips||0, unit:"Stk" });
+
+      if(sys==="Doppelstab"){
+        auto.push({ k:`auto_pfosten_${h}`, label:`Pfosten ${h} cm`, qty:t.posts||0, unit:"Stk" });
+        auto.push({ k:`auto_eckpfosten_${h}`, label:`Eckpfosten ${h} cm`, qty:t.cornerPosts||0, unit:"Stk" });
+        auto.push({ k:`auto_leisten_${h}`, label:`Pfostenleisten ${h} cm`, qty:t.postStrips||0, unit:"Stk" });
+      }else{
+        auto.push({ k:`auto_pfosten_${pLen}`, label:`Pfosten ${pLen} cm`, qty:t.posts||0, unit:"Stk" });
+        auto.push({ k:`auto_eckpfosten_${pLen}`, label:`Eckpfosten ${pLen} cm`, qty:t.cornerPosts||0, unit:"Stk" });
+        auto.push({ k:"auto_leisten", label:"Pfostenleisten", qty:t.postStrips||0, unit:"Stk" });
+      }
     }
 
     // Beton ist immer gesamt
     auto.push({ k:"auto_beton", label:"Beton", qty:concreteQty||0, unit:concreteUnit });
 
     const mats = p.chef.materials;
-
-    function norm(s){ return String(s||"").toLowerCase().replace(/[^a-z0-9äöüß]+/g," ").trim(); }
 
     const byKey = {};
     for(let i=0;i<mats.length;i++){ const it=mats[i]; if(it && it.autoKey && !byKey[it.autoKey]) byKey[it.autoKey]=it; }
@@ -1492,7 +1772,6 @@ function computeTotals(c){
         if(!want) continue;
         mats.push({ id: uid(), name: a.label, qty: want, unit: a.unit, note:"", autoKey:a.k, override:false });
       }else{
-        // Wenn nicht überschrieben: automatische Menge aktualisieren
         if(!it.override){
           it.name = a.label;
           it.qty = want;
@@ -1503,8 +1782,6 @@ function computeTotals(c){
 
     // Cleanup: alte Auto-Zeilen entfernen, die nicht mehr zu den aktuellen Auto-Keys passen
     p.chef.materials = (p.chef.materials||[]).filter(x=>!x || !x.autoKey || autoKeys[x.autoKey]);
-
-    // Kein Speichern hier – wird vom Aufrufer gemacht
   }
 
 // Chef
@@ -1571,7 +1848,9 @@ function computeTotals(c){
       const posts = panels ? (panels + 1) : 0;
       const ht = s.height || (p.customer.height||160);
       const sys = s.system || (p.customer.system||"Doppelstab");
+      const ds = (sys==="Doppelstab");
       const pLen = postLenCm(ht);
+      const pLabel = ds ? `${ht} cm` : `${pLen} cm`;
       const col = s.color || (p.customer.color||"");
       const priv = (s.privacy||"no")==="yes";
       return `
