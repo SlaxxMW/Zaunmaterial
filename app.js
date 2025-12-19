@@ -1186,12 +1186,33 @@ ${p.title}`)) return;
 
   el("btnAddMat").addEventListener("click", ()=>{
     const p=currentProject(); if(!p) return;
-    const name=(mName.value||"").trim(); if(!name) return toast("Name fehlt");
-    const qty=toNum(mQty.value,0); const unit=mUnit.value||"Stk"; const note=(mNote.value||"").trim();
-    p.chef.materials.unshift({id:uid(), name, qty, unit, note});
-    mName.value=""; mQty.value=""; mNote.value="";
+    const sel=el("mName");
+    const custom=el("mNameCustom");
+    let name = (sel && sel.value) ? String(sel.value).trim() : "";
+    if(name==="__custom__"){
+      name = custom ? String(custom.value||"").trim() : "";
+    }
+    const qty = toNum(mQty.value,0);
+    const unit = mUnit.value || "Stk";
+    if(!name){ toast("Fehlt", "Material auswählen/eingeben"); return; }
+    const item={ id: uid(), name, qty, unit, note:"", override:true };
+    if(!p.chef) p.chef = { bagger:"no", ramme:"no", handbohr:"no", schubkarre:"no", haenger:"no", note:"", materials:[], photos:[] };
+    if(!Array.isArray(p.chef.materials)) p.chef.materials=[];
+    p.chef.materials.push(item);
+    // reset
+    if(sel) sel.value="Doppelstabmatte";
+    if(custom){ custom.value=""; custom.style.display="none"; }
+    mQty.value="";
     save(); renderMaterials(); refreshChefPill(); toast("Hinzugefügt", name);
   });
+
+  // Toggle Freitext-Eingabe bei Materialauswahl
+  if(el("mName") && el("mNameCustom")){
+    el("mName").addEventListener("change", ()=>{
+      const v=el("mName").value;
+      el("mNameCustom").style.display = (v==="__custom__") ? "block" : "none";
+    });
+  }
 
   el("btnClearMat").addEventListener("click", ()=>{
     const p=currentProject(); if(!p) return;
@@ -1204,68 +1225,56 @@ ${p.title}`)) return;
     const list=p.chef.materials||[];
     const view = sortMaterials(list);
     matPill.textContent=String(list.length);
-    if(!view.length){ matList.innerHTML='<div class="hint">(noch leer)</div>'; return; }
-    matList.innerHTML="";
+    if(!view.length){
+      matList.innerHTML='<div class="hint">(noch leer)</div>';
+      return;
+    }
+
+    matList.innerHTML = `
+      <details open>
+        <summary>
+          <span>Materialliste</span>
+          <span class="pill">${view.length}</span>
+        </summary>
+        <div class="matRows"></div>
+      </details>
+    `;
+    const rows = matList.querySelector(".matRows");
     view.forEach(it=>{
       const row=document.createElement("div");
-      row.className="card"; row.style.cursor="default";
-      const autoBtn = it.autoKey ? `<button class="btn small" type="button" data-auto="1">Auto</button>` : "";
+      row.className="matRow";
       row.innerHTML = `
-        <div class="cardTitle">
-          <b>${escapeHtml(it.name)}</b>
-          <div class="row tight">${autoBtn}<button class="btn small bad" type="button" data-del="1">✕</button></div>
-        </div>
-        <div class="grid2" style="margin-top:10px;">
-          <div><label>Menge</label><input value="${escapeHtml(it.qty)}" inputmode="decimal"/></div>
-          <div>
-            <label>Einheit</label>
-            <select>${["Stk","m","m²","Sack","m³","Paket"].map(u=>`<option ${u===it.unit?"selected":""}>${u}</option>`).join("")}</select>
-          </div>
-        </div>
-        <div style="margin-top:10px;"><label>Notiz</label><textarea>${escapeHtml(it.note||"")}</textarea></div>
+        <div class="matName">${escapeHtml(it.name)}</div>
+        <input type="text" inputmode="decimal" value="${escapeHtml(String(it.qty??""))}" />
+        <select>
+          <option${it.unit==="Stk"?" selected":""}>Stk</option>
+          <option${it.unit==="m"?" selected":""}>m</option>
+          <option${it.unit==="m²"?" selected":""}>m²</option>
+          <option${it.unit==="Sack"?" selected":""}>Sack</option>
+          <option${it.unit==="m³"?" selected":""}>m³</option>
+          <option${it.unit==="Paket"?" selected":""}>Paket</option>
+        </select>
+        <button class="btn small bad" type="button" title="löschen">✕</button>
       `;
-      const btnDel=row.querySelector("button[data-del=\"1\"]");
-      const btnAuto=row.querySelector("button[data-auto=\"1\"]");
-      const inpQty=row.querySelectorAll("input")[0];
-      const selUnit=row.querySelectorAll("select")[0];
-      const ta=row.querySelector("textarea");
+      const inpQty=row.querySelector("input");
+      const selUnit=row.querySelector("select");
+      const btnDel=row.querySelector("button");
+      const commit=()=>{
+        const p2=currentProject(); if(!p2) return;
+        const tgt=(p2.chef.materials||[]).find(x=>x.id===it.id); if(!tgt) return;
+        tgt.qty = toNum(inpQty.value,0);
+        tgt.unit = selUnit.value;
+        tgt.override = true;
+        save(); refreshChefPill();
+      };
+      inpQty.addEventListener("change", commit);
+      selUnit.addEventListener("change", commit);
       btnDel.addEventListener("click", ()=>{
         const p2=currentProject(); if(!p2) return;
         p2.chef.materials=(p2.chef.materials||[]).filter(x=>x.id!==it.id);
         save(); renderMaterials(); refreshChefPill();
       });
-      if(btnAuto){
-        btnAuto.addEventListener("click", ()=>{
-          const p2=currentProject(); if(!p2) return;
-          const tgt=(p2.chef.materials||[]).find(x=>x.id===it.id); if(!tgt) return;
-          tgt.override=false;
-          ensureChefAutoMaterials(p2);
-          save(); renderMaterials(); refreshChefPill();
-          toast("Auto", "zurück auf Berechnung");
-        });
-      }
-
-      const commit=()=>{
-        const p2=currentProject(); if(!p2) return;
-        const tgt=(p2.chef.materials||[]).find(x=>x.id===it.id); if(!tgt) return;
-        const newQty=toNum(inpQty.value,0);
-        tgt.unit=selUnit.value;
-        tgt.note=(ta.value||"").trim();
-        if(tgt.autoKey){
-          const autoQty = (tgt.autoQty!=null)?Number(tgt.autoQty):null;
-          tgt.qty=newQty;
-          tgt.override = (autoQty!=null) ? (Number(newQty)!==Number(autoQty) || tgt.unit!==String(tgt.autoUnit||tgt.unit)) : true;
-          if(!tgt.override){
-            tgt.qty = autoQty;
-            if(tgt.autoUnit) tgt.unit = tgt.autoUnit;
-          }
-        } else {
-          tgt.qty=newQty;
-        }
-        save();
-      };
-      [inpQty,selUnit,ta].forEach(x=>{ x.addEventListener("change",commit); x.addEventListener("input",()=>setTimeout(commit,250)); });
-      matList.appendChild(row);
+      rows.appendChild(row);
     });
   }
 
