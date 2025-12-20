@@ -2644,22 +2644,20 @@ function refreshCustomerUI(){
           system: p.customer.system || "Doppelstab",
           color: p.customer.color || "Anthrazit (RAL 7016)",
           privacy: p.customer.privacy || "no",
-        corners: 0
-      }];
-      }
-    
+          corners: 0
+        }];
+       }
 
-  // normalize
-  p.customer.segments = (p.customer.segments||[]).map((s,i)=>{
-    s = s || {};
-    if(!s.id) s.id = uid();
-    if(!s.label) s.label = String.fromCharCode(65+i);
-    if(s.corners==null || s.corners==="") s.corners = 0;
-    s.corners = clampInt(s.corners,0,999);
-    return s;
-  });
-
-}
+      // normalize
+      p.customer.segments = (p.customer.segments||[]).map((s,i)=>{
+        s = s || {};
+        if(!s.id) s.id = uid();
+        if(!s.label) s.label = String.fromCharCode(65+i);
+        if(s.corners==null || s.corners==="") s.corners = 0;
+        s.corners = clampInt(s.corners,0,999);
+        return s;
+      });
+    }
 
     function totalLengthFromSegments(){
       const segs = (p.customer && Array.isArray(p.customer.segments)) ? p.customer.segments : [];
