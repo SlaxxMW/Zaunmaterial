@@ -832,7 +832,17 @@
 
       try {
         // iOS/PWA: SW URL mit Version -> garantiertes Update
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.39j", { updateViaCache: "none" });
+        // Auto-Cleanup: alte ServiceWorker-Versionen entfernen (damit Updates nicht "festhängen")
+        try {
+          const regs = await navigator.serviceWorker.getRegistrations();
+          for (const r of regs) {
+            const u = (r && r.active && r.active.scriptURL) ? r.active.scriptURL : "";
+            if (u.includes("sw.js?v=") && !u.includes("sw.js?v=1.4.41")) {
+              await r.unregister();
+            }
+          }
+        } catch(_) {}
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.41", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});
