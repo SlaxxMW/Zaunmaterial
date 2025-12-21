@@ -64,6 +64,16 @@
         var(--bg);
     }
     .wrap{ max-width:1160px; margin:0 auto; padding:14px; }
+
+    /* Full-bleed Card (z.B. Zaunabschnitte) – bricht aus der max-width aus */
+    .fullBleed{
+      width: calc(100vw - 28px);
+      margin-left: calc(50% - 50vw + 14px);
+      margin-right: calc(50% - 50vw + 14px);
+    }
+    @media (max-width:860px){
+      .fullBleed{ width:100%; margin-left:0; margin-right:0; }
+    }
     .topbar{
       background:linear-gradient(180deg, rgba(31,42,61,.92), rgba(34,49,74,.86));
       border:1px solid var(--line);
@@ -299,8 +309,6 @@
     }
 
   .isDisabled{ opacity:0.65; filter:saturate(0.85); }
-
-  .globalFenceFields{ display:none !important; }
 </style>
 </head>
 
@@ -473,103 +481,103 @@
         </div>
       </div>
 
-      <div class="cardTitle" style="margin-top:8px;"><h3>🧱 Zaun eingeben</h3></div>
+      <div class="cardTitle" style="margin-top:8px;"><h3>📇 Kontakt</h3></div>
       <div class="grid2">
         <div>
           <label>E‑Mail</label>
           <input id="kEmail" inputmode="email" />
         </div>
-        <div class="globalFenceFields">
-          <label>Zaunlänge (m)</label>
-          <input id="kLen" inputmode="decimal" placeholder="z. B. 17,5" />
-        </div>
+        <div style="opacity:.65; font-size:12px; padding-top:26px;">Zaun wird über Abschnitte erfasst (A, B, C…)</div>
       </div>
+      <input id="kLen" type="hidden" />
 
-      <div id="chefSegmentsBox" class="card" style="margin-top:10px; display:none;">
-        <div class="row" style="justify-content:space-between; align-items:center;">
-          <div style="font-weight:800;">📐 Zaunabschnitte</h3>
-    <div id="segModeHint" class="hint" style="display:none;margin:8px 0;padding:10px;border-radius:12px;background:rgba(255,255,255,0.08);border:1px solid rgba(255,255,255,0.12);">Abschnitt-Modus aktiv: Bitte alle Zaun-Daten nur in den Abschnitten pflegen (Gesamtfelder sind deaktiviert).</div>
-    <h3></div>
-          <div class="pill" id="chefSegmentsPill">—</div>
-        </div>
-        <div id="chefSegmentsList" style="margin-top:8px;"></div>
-        
+      <div id="customerFenceGlobalsTop" style="display:none;">
+  <div class="grid3">
+    <div>
+      <label>Höhe</label>
+      <select id="kHeight"></select>
+    </div>
+    <div>
+      <label>System</label>
+      <select id="kSystem">
+        <option>Doppelstab</option>
+        <option>Holz</option>
+        <option>WPC</option>
+        <option>Aluminium</option>
+        <option>Diagonalgeflecht</option>
+        <option>Tornado</option>
+        <option>Elektrozaun</option>
+      </select>
+    </div>
+    <div>
+      <label>Farbe</label>
+      <select id="kColor"></select>
+    </div>
+  </div>
+</div>
+
+<div id="customerFenceGlobalsBottom" style="display:none;">
+  <div class="grid2">
+    <div>
+      <label>Holzart</label>
+      <select id="kWood"></select>
+    </div>
+    <div>
+      <label>WPC Variante</label>
+      <select id="kWpc"></select>
+    </div>
+  </div>
+</div>
+
+<div class="grid3" style="margin-top:10px;">
+  <div>
+    <label>Gefälle</label>
+    <select id="kSlopeType">
+      <option value="flat">kein</option>
+      <option value="pct">%</option>
+    </select>
+  </div>
+
+  <div class="card fullBleed" style="margin-top:0; grid-column:1 / -1;">
+    <div class="cardTitle">
+      <h3>🧩 Zaunabschnitte (A, B, C…)</h3>
+      <span class="pill">unterschiedliche Höhen & Systeme</span>
+    </div>
+
+    <div class="row" style="margin-top:8px; gap:8px; align-items:flex-end;">
+      <div style="flex:0 0 140px;">
+        <label>Neu</label>
+        <select id="segAddLabel"></select>
       </div>
+      <button id="btnSegAdd" class="btn green" type="button">+ Abschnitt</button>
+      <button id="btnSegCollapseAll" class="btn" type="button">Alle schließen</button>
+      <button id="btnSegExpandAll" class="btn" type="button">Alle öffnen</button>
+    </div>
 
-      <div class="grid3 globalFenceFields">
-        <div>
-          <label>Höhe</label>
-          <select id="kHeight"></select>
-        </div>
-        <div>
-          <label>System</label>
-          <select id="kSystem">
-            <option>Doppelstab</option>
-            <option>Holz</option>
-            <option>WPC</option>
-            <option>Alu</option>
-            <option>Diagonalgeflecht</option>
-            <option>Tornado</option>
-            <option>Elektrozaun</option>
-          </select>
-        </div>
-        <div>
-          <label>Farbe</label>
-          <select id="kColor"></select>
-        </div>
-      </div>
+    <div id="segList" style="margin-top:10px;"></div>
 
-      <div class="grid2">
-        <div>
-          <label>Holzart</label>
-          <select id="kWood"></select>
-        </div>
-        <div>
-          <label>WPC Variante</label>
-          <select id="kWpc"></select>
-        </div>
-      </div>
+    <div class="hint" style="margin-top:10px;">
+      Tipp: Länge je Abschnitt eintragen. Gesamtlänge wird automatisch summiert.
+    </div>
+  </div>
 
-      <div class="grid3">
-        <div>
-          <label>Gefälle</label>
-          <select id="kSlopeType">
-            <option value="flat">kein</option>
-            <option value="pct">%</option>
-          </select>
-        </div>
-      <div class="card" style="margin-top:10px;">
-        <div class="cardTitle">
-          <h3>🧩 Zaunabschnitte (A, B, C…)</h3>
-          <span class="pill">unterschiedliche Höhen & Systeme</span>
-        </div>
+  <div>
+    <label>Gefälle %</label>
+    <input id="kSlopePct" inputmode="decimal" placeholder="z. B. 2,5" />
+  </div>
+</div>
 
-        <div class="row" style="margin-top:8px; gap:8px; align-items:flex-end;">
-          <div style="flex:0 0 140px;">
-            <label>Neu</label>
-            <select id="segAddLabel"></select>
-          </div>
-          <button id="btnSegAdd" class="btn green" type="button">+ Abschnitt</button>
-          <button id="btnSegCollapseAll" class="btn" type="button">Alle schließen</button>
-          <button id="btnSegExpandAll" class="btn" type="button">Alle öffnen</button>
-        </div>
+<!-- Eck-/Corner Eingabe außerhalb der Abschnitte (ausgeblendet, bleibt für Kompatibilität) -->
+<div style="display:none;">
+  <label>Ecken</label>
+  <div class="row">
+    <button class="btn small" id="kCornersMinus" type="button">−</button>
+    <input id="kCorners" inputmode="numeric" value="0" style="max-width:140px;" />
+    <button class="btn small" id="kCornersPlus" type="button">+</button>
+  </div>
+</div>
 
-        <div id="segList" style="margin-top:10px;"></div>
-
-        <div class="hint" style="margin-top:10px;">
-          Tipp: Länge je Abschnitt eintragen. Gesamtlänge wird automatisch summiert.
-        </div>
-      </div>
-
-        <div>
-          <label>Gefälle %</label>
-          <input id="kSlopePct" inputmode="decimal" placeholder="z. B. 2,5" />
-        </div>
-        
-        </div>
-      </div>
-
-      <div class="grid2">
+<div class="grid2">
         <div>
           <label>Beton‑Modus</label>
           <select id="kConcreteMode">
@@ -634,9 +642,10 @@
       <label>Kunden‑Notiz</label>
       <textarea id="kNote" placeholder="Notizen…"></textarea>
 
-      <div class="row" style="margin-top:10px;">
-        
-        <button class="btn blue" id="btnKDown" type="button">Kunden‑Text Download</button>
+      
+</div>
+<div class="row" style="margin-top:10px;">
+<button class="btn blue" id="btnKDown" type="button">Kunden‑Text Download</button>
         <button class="btn accent green" id="btnKWhats" type="button">WhatsApp Kunde</button>
         <button class="btn orange" id="btnKCall" type="button">📞</button>
         <button class="btn purple" id="btnKMail" type="button">✉️</button>
@@ -808,7 +817,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js?v=1.4.43" defer></script></script>
+  <script src="./app.js?v=1.4.41" defer></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
@@ -823,7 +832,7 @@
 
       try {
         // iOS/PWA: SW URL mit Version -> garantiertes Update
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.37", { updateViaCache: "none" });
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.39j", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});

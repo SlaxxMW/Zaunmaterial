@@ -32,9 +32,90 @@ let gateUiIdx=0; let gateCollapsed=false;
   const DEFAULT_HEIGHTS = [60,80,100,120,140,160,180,200];
   const PANEL_W = 2.50;
 
-  const ZAUNTEAM_FARBEN = ["Anthrazit (RAL 7016)","Schwarz (RAL 9005)","Grau (RAL 7030/7035)","Grün","Weiß","Verzinkt / Natur","Holz Natur","Holz Lasur"];
+  // Farben (realistische Standardfarben – erweitert)
+  // Hinweis: Segment-Editor nutzt zusätzlich systemabhängige Vorschläge (siehe COLOR_BY_SYSTEM).
+  const ZAUNTEAM_FARBEN = [
+    // Metall / Standard
+    "Anthrazit (RAL 7016)",
+    "Moosgrün (RAL 6005)",
+    "Schwarz (RAL 9005)",
+    "Weiß (RAL 9016)",
+    "Steingrau (RAL 7030)",
+    "Basaltgrau (RAL 7012)",
+    "Silbergrau (RAL 7001)",
+    "Aluminiumgrau (RAL 9006)",
+    "Feuerverzinkt / Natur",
+    // Holz / WPC (gängige Dekore)
+    "Holz Natur (Lärche)",
+    "Holz Teak",
+    "Holz Nussbaum",
+    "Holz Grau",
+    "WPC Anthrazit",
+    "WPC Steingrau",
+    "WPC Sand",
+    "WPC Teak",
+    "WPC Braun"
+  ];
+
+  // Systemabhängige Farb-Vorschläge (damit "realistische" Farben pro Material gewählt werden)
+  const COLOR_BY_SYSTEM = {
+    "Doppelstab": [
+      "Anthrazit (RAL 7016)",
+      "Moosgrün (RAL 6005)",
+      "Schwarz (RAL 9005)",
+      "Weiß (RAL 9016)",
+      "Steingrau (RAL 7030)",
+      "Basaltgrau (RAL 7012)",
+      "Feuerverzinkt / Natur"
+    ],
+    "Diagonalgeflecht": [
+      "Anthrazit (RAL 7016)",
+      "Moosgrün (RAL 6005)",
+      "Feuerverzinkt / Natur"
+    ],
+    "Tornado": [
+      "Anthrazit (RAL 7016)",
+      "Moosgrün (RAL 6005)",
+      "Feuerverzinkt / Natur"
+    ],
+    "Elektrozaun": [
+      "Natur / Verzinkt",
+      "Schwarz (RAL 9005)"
+    ],
+    "Aluminium": [
+      "Anthrazit (RAL 7016)",
+      "DB 703 (Eisenglimmer)",
+      "Schwarz (RAL 9005)",
+      "Weiß (RAL 9016)",
+      "Aluminiumgrau (RAL 9006)",
+      "Silbergrau (RAL 7001)"
+    ],
+    "Holz": [
+      "Holz Natur (Kiefer/Fichte, kdi)",
+      "Holz Natur (Douglasie)",
+      "Holz Natur (Lärche)",
+      "Holz Natur (Robinie)",
+      "Holz Natur (Kastanie)",
+      "Holz Thermoholz (Esche)",
+      "Holz Thermoholz (Kiefer)",
+      "Holz Bangkirai",
+      "Holz Teak",
+      "Holz Nussbaum",
+      "Holz Eiche hell",
+      "Holz Grau (geölt)",
+      "Holz Schwarz (Lasur)"
+    ],
+    "WPC": [
+      "WPC Anthrazit",
+      "WPC Steingrau",
+      "WPC Sand",
+      "WPC Teak",
+      "WPC Braun"
+    ]
+  };
   const HOLZARTEN = ["—","Lärche","Douglasie","Kiefer","Fichte","Eiche"];
   const WPC_VARIANTEN = ["—","glatt","geriffelt","co-extrudiert"];
+  const ELECTRO_WOOD_SUGGESTIONS = ["Robinie","Kastanie","Lärche","Douglasie","Kiefer (kdi)","Fichte (kdi)","Thermoholz","Bambus"];
 
   const el = (id) => document.getElementById(id);
   const toastEl = el("toast");
@@ -92,12 +173,257 @@ function toast(a,b="") {
   const uid = () => Math.random().toString(36).slice(2,10) + Date.now().toString(36).slice(3);
   const nowISO = () => new Date().toISOString();
 
+  // Normalisiert System-Bezeichnungen (damit alte Daten/Abkürzungen weiter funktionieren)
+  const normSystem = (s) => {
+    const x = String(s||"").trim();
+    if(!x) return "Doppelstab";
+    const low = x.toLowerCase();
+    if(low === "alu" || low.startsWith("alu ") || low.startsWith("aluminium")) return "Aluminium";
+    if(low === "einfachstab") return "Doppelstab"; // ersetzt (wird nicht mehr angeboten)
+    if(low === "diagonal geflecht") return "Diagonalgeflecht";
+    return x;
+  };
+  const colorsForSystem = (sys) => {
+    const k = normSystem(sys);
+    return COLOR_BY_SYSTEM[k] || ZAUNTEAM_FARBEN;
+  };
+
+  const electroWoodDatalistHTML = () => {
+    try{
+      return `<datalist id="jsWoodSpeciesDL">${(ELECTRO_WOOD_SUGGESTIONS||[]).map(v=>`<option value="${String(v).replace(/"/g,"&quot;")}"></option>`).join("")}</datalist>`;
+    }catch(e){ return `<datalist id="jsWoodSpeciesDL"></datalist>`; }
+  };
+
+  
+  // Alias: Wood species datalist (used for Weidezaun/Holz)
+  const woodSpeciesDatalistHTML = electroWoodDatalistHTML;
+function setElectroExtrasVisible(det, sys, height){
+    if(!det) return;
+    const show = (normSystem(sys)==="Elektrozaun");
+    det.querySelectorAll(".jsElectroOnly").forEach(el=>{
+      el.style.display = show ? "" : "none";
+    });
+    if(show){
+      const wood = det.querySelector('input[data-k="electroWood"]');
+      if(wood && !String(wood.value||"").trim()) wood.value = "Robinie";
+      const pl = det.querySelector('input[data-k="electroPostLen"]');
+      if(pl && !String(pl.value||"").trim()){
+        const h = clampInt(Number(height||160), 60, 300);
+        const d = clampInt(h + 60, 120, 400);
+        pl.value = String(d);
+      }
+      const sp = det.querySelector('input[data-k="electroSpacing"]');
+      if(sp && !String(sp.value||"").trim()) sp.value = "3,0";
+      const ex = det.querySelector('input[data-k="electroExtraPct"]');
+      if(ex && !String(ex.value||"").trim()) ex.value = "10";
+      const li = det.querySelector('input[data-k="electroLitze"]');
+      if(li && !String(li.value||"").trim()) li.value = "3";
+      const dr = det.querySelector('input[data-k="electroDraht"]');
+      if(dr && !String(dr.value||"").trim()) dr.value = "0";
+      const ba = det.querySelector('input[data-k="electroBand"]');
+      if(ba && !String(ba.value||"").trim()) ba.value = "0";
+
+      const lr = det.querySelector('select[data-k="electroLitzeRoll"]');
+      if(lr && !String(lr.value||"").trim()) lr.value = "400";
+      const rr = det.querySelector('select[data-k="electroDrahtRoll"]');
+      if(rr && !String(rr.value||"").trim()) rr.value = "625";
+      const br = det.querySelector('select[data-k="electroBandRoll"]');
+      if(br && !String(br.value||"").trim()) br.value = "200";
+
+      try{ updateElectroCalc(det); }catch(_){ }
+    }
+  }
+
+  // Weidezaun (Holz) nutzt dieselben Preset-Werte wie Elektrozaun (Strang-Anzahl/Abstand/Reserve)
+  const WEIDE_PRESETS = ELECTRO_PRESETS;
+
+  function applyWeidePreset(det, key){
+    try{
+      if(!det || !key) return;
+      const p = WEIDE_PRESETS[key];
+      if(!p) return;
+
+      const setVal = (sel, v) => { if(sel){ sel.value = String(v); } };
+
+      const inLit = det.querySelector('input[data-k="weideLitze"]');
+      const inDra = det.querySelector('input[data-k="weideDraht"]');
+      const inBan = det.querySelector('input[data-k="weideBand"]');
+      const inSp  = det.querySelector('input[data-k="weideSpacing"]');
+      const inEx  = det.querySelector('input[data-k="weideExtraPct"]');
+
+      // Defaults aus Preset
+      if(inBan) inBan.value = String(p.band||0);
+      if(inLit) inLit.value = String(p.litze||0);
+      if(inDra) inDra.value = String(p.draht||0);
+      if(inSp)  inSp.value  = String(p.spacing||3);
+      if(inEx)  inEx.value  = String(p.extraPct||10);
+
+      // sinnvolle Rollendefaults
+      const lr = det.querySelector('select[data-k="weideLitzeRoll"]');
+      if(lr && !String(lr.value||"").trim()) lr.value = "400";
+      const rr = det.querySelector('select[data-k="weideDrahtRoll"]');
+      if(rr && !String(rr.value||"").trim()) rr.value = "625";
+      const br = det.querySelector('select[data-k="weideBandRoll"]');
+      if(br && !String(br.value||"").trim()) br.value = "200";
+
+      try{ updateWeideCalc(det); }catch(_){ }
+    }catch(_){ }
+  }
+
+  function setWeideExtrasVisible(det, sys){
+    if(!det) return;
+    const isWood = (normSystem(sys)==="Holz");
+
+    // Toggle-Block nur bei Holz
+    det.querySelectorAll(".jsWoodOnly").forEach(n=>{
+      n.style.display = isWood ? "" : "none";
+    });
+
+    const cb = det.querySelector('input[data-k="woodIsWeide"]');
+    const isWeide = !!(isWood && cb && cb.checked);
+
+    det.querySelectorAll(".jsWeideOnly").forEach(n=>{
+      n.style.display = isWeide ? "" : "none";
+    });
+
+    // Calc aktualisieren/leer machen
+    try{ updateWeideCalc(det); }catch(_){ }
+  }
+
+  function updateWeideCalc(det){
+    try{
+      if(!det) return;
+      const sys = det.querySelector('select[data-k="system"]') ? String(det.querySelector('select[data-k="system"]').value||"") : "";
+      if(normSystem(sys)!=="Holz") return;
+
+      const cb = det.querySelector('input[data-k="woodIsWeide"]');
+      const out = det.querySelector('.jsWeideCalc');
+      if(!cb || !cb.checked){
+        if(out) out.textContent = "";
+        return;
+      }
+
+      const len = Math.max(0, toNum(det.querySelector('input[data-k="len"]')?.value || "", 0));
+      const spacing = Math.max(1, toNum(det.querySelector('input[data-k="weideSpacing"]')?.value || "", 3));
+      const extraPct = toNum(det.querySelector('input[data-k="weideExtraPct"]')?.value || "", 10);
+      const factor = 1 + (extraPct/100);
+
+      const litzeN = clampInt(det.querySelector('input[data-k="weideLitze"]')?.value || 0, 0, 20);
+      const drahtN = clampInt(det.querySelector('input[data-k="weideDraht"]')?.value || 0, 0, 20);
+      const bandN  = clampInt(det.querySelector('input[data-k="weideBand"]')?.value  || 0, 0, 20);
+      const boardsRows = clampInt(det.querySelector('input[data-k="weideBoards"]')?.value || 0, 0, 20);
+
+      const baseLen = len * factor;
+      const litzeM = baseLen * litzeN;
+      const drahtM = baseLen * drahtN;
+      const bandM  = baseLen * bandN;
+      const boardsM = baseLen * boardsRows;
+
+      const intervals = len ? Math.ceil(len / spacing) : 0;
+      const posts = intervals ? (intervals + 1) : 0;
+      const corners = clampInt(det.querySelector('input[data-k="corners"]')?.value || 0, 0, posts);
+      const normalPosts = Math.max(0, posts - corners);
+
+      const isoLD_normal = (litzeN + drahtN) * normalPosts;
+      const isoLD_corner = (litzeN + drahtN) * corners;
+      const isoBand_normal = bandN * normalPosts;
+      const isoBand_corner = bandN * corners;
+
+      if(out){
+        const parts = [];
+        parts.push(`Pfosten: ${posts} (Ecken ${corners})`);
+        if(litzeN) parts.push(`Litze: ${fmt(litzeM)} m`);
+        if(drahtN) parts.push(`Draht: ${fmt(drahtM)} m`);
+        if(bandN)  parts.push(`Band: ${fmt(bandM)} m`);
+        if(boardsRows) parts.push(`Bretter: ${fmt(boardsM)} m`);
+        if(litzeN||drahtN||bandN){
+          parts.push(`Isolatoren: normal ${isoLD_normal + isoBand_normal} • eck ${isoLD_corner + isoBand_corner}`);
+        }
+        out.textContent = parts.join(" • ");
+      }
+    }catch(_){ }
+  }
+
+
+
+  function updateElectroCalc(det){
+    try{
+      if(!det) return;
+      const sys = det.querySelector('select[data-k="system"]') ? String(det.querySelector('select[data-k="system"]').value||"") : "";
+      if(normSystem(sys)!=="Elektrozaun") return;
+
+      const len = Math.max(0, toNum(det.querySelector('input[data-k="len"]')?.value || "", 0));
+      const extraPct = toNum(det.querySelector('input[data-k="electroExtraPct"]')?.value || "", 10);
+      const factor = 1 + (extraPct/100);
+      const base = len * factor;
+
+      const litzeN = clampInt(det.querySelector('input[data-k="electroLitze"]')?.value || 0, 0, 50);
+      const drahtN = clampInt(det.querySelector('input[data-k="electroDraht"]')?.value || 0, 0, 50);
+      const bandN  = clampInt(det.querySelector('input[data-k="electroBand"]')?.value || 0, 0, 50);
+
+      const litzeM = base * litzeN;
+      const drahtM = base * drahtN;
+      const bandM  = base * bandN;
+
+      const lr = clampInt(det.querySelector('select[data-k="electroLitzeRoll"]')?.value || 400, 50, 5000);
+      const dr = clampInt(det.querySelector('select[data-k="electroDrahtRoll"]')?.value || 625, 50, 5000);
+      const br = clampInt(det.querySelector('select[data-k="electroBandRoll"]')?.value || 200, 50, 5000);
+
+      const rolls = (m, r)=> (m>0 ? Math.ceil(m / r) : 0);
+
+      const out = det.querySelector('.jsElectroCalc');
+      if(out){
+        const baseTxt = `Basis: ${fmt(len)} m + ${fmt(extraPct)}% = ${fmt(base)} m`;
+        const parts = [];
+        if(litzeN>0) parts.push(`Litze: ${litzeN}× = ${fmt(litzeM)} m (≈ ${rolls(litzeM, lr)} Rolle(n) à ${lr} m)`);
+        if(drahtN>0) parts.push(`Draht: ${drahtN}× = ${fmt(drahtM)} m (≈ ${rolls(drahtM, dr)} Rolle(n) à ${dr} m)`);
+        if(bandN>0)  parts.push(`Band: ${bandN}× = ${fmt(bandM)} m (≈ ${rolls(bandM, br)} Rolle(n) à ${br} m)`);
+        out.textContent = parts.length ? (`${baseTxt} — ` + parts.join(' • ')) : (`${baseTxt} — (noch keine Litzen/Drähte/Bänder eingetragen)`);
+      }
+    }catch(e){/*silent*/}
+  }
+
+  const ELECTRO_PRESETS = {
+    pferd:     { band: 3, litze: 0, draht: 0, spacing: 4,   extraPct: 10 },
+    rind:      { band: 0, litze: 2, draht: 0, spacing: 4,   extraPct: 10 },
+    schaf:     { band: 0, litze: 4, draht: 0, spacing: 3.5, extraPct: 10 },
+    ziege:     { band: 0, litze: 5, draht: 0, spacing: 3.5, extraPct: 10 },
+    wolf:      { band: 0, litze: 0, draht: 5, spacing: 3,   extraPct: 10 },
+    gefluegel: { band: 0, litze: 6, draht: 0, spacing: 2.5, extraPct: 10 }
+  };
+
+  function applyElectroPreset(det, key){
+    try{
+      if(!det || !key) return;
+      const p = ELECTRO_PRESETS[key];
+      if(!p) return;
+
+      const set = (sel, val)=>{
+        const el = det.querySelector(sel);
+        if(el) el.value = (val===undefined || val===null) ? "" : String(val);
+      };
+
+      set('input[data-k="electroLitze"]', p.litze);
+      set('input[data-k="electroDraht"]', p.draht);
+      set('input[data-k="electroBand"]',  p.band);
+
+      // these live in the segment header area (jsElectroOnly is shown/hidden by system)
+      set('input[data-k="electroSpacing"]',  p.spacing);
+      set('input[data-k="electroExtraPct"]', p.extraPct);
+
+      try{ updateElectroCalc(det); }catch(_){}
+    }catch(_){}
+  }
+
+
+
+
   function escapeHtml(s) {
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.43";
-  const APP_BUILD = "2025-12-20";
+    const APP_VERSION = "1.4.41";
+  const APP_BUILD = "2025-12-21";
 let state = { version:"1.4.33", selectedProjectId:null, projects:[], meta:{ lastSavedAt:"", lastBackupAt:"" } };
 
   function blankProject(name) {
@@ -302,6 +628,18 @@ for(const k of LEGACY_KEYS) {
       sel.appendChild(o);
     });
     if(defVal!=null) sel.value=defVal;
+  }
+
+  // Behalte benutzerdefinierte Werte in Selects (falls nicht in den Optionen enthalten)
+  function ensureOption(sel, value, labelSuffix=""){
+    const v = String(value||"").trim();
+    if(!v) return;
+    const exists = Array.from(sel.options).some(o => o.value === v);
+    if(exists) return;
+    const o = document.createElement("option");
+    o.value = v;
+    o.textContent = labelSuffix ? `${v} ${labelSuffix}` : v;
+    sel.insertBefore(o, sel.firstChild);
   }
 
   // Projects UI
@@ -541,9 +879,9 @@ ${p.title}`)) return;
     return Math.max(lo, Math.min(hi, n));
   }
   function setCorners(v){ kCorners.value = String(clampInt(v)); }
-  { const _b=el("kCornersMinus"); if(_b) _b.addEventListener("click", ()=>{ setCorners(clampInt(kCorners.value)-1); persistCustomer(); }); }
-  { const _b=el("kCornersPlus"); if(_b) _b.addEventListener("click", ()=>{ setCorners(clampInt(kCorners.value)+1); persistCustomer(); }); }
-  if(kCorners) kCorners.addEventListener("change", ()=>{ setCorners(kCorners.value); persistCustomer(); });
+  el("kCornersMinus").addEventListener("click", ()=>{ setCorners(clampInt(kCorners.value)-1); persistCustomer(); });
+  el("kCornersPlus").addEventListener("click", ()=>{ setCorners(clampInt(kCorners.value)+1); persistCustomer(); });
+  kCorners.addEventListener("change", ()=>{ setCorners(kCorners.value); persistCustomer(); });
 
   function updateConcretePlaceholder(){ kConcreteVal.placeholder = (kConcreteMode.value==="m3") ? "Auto (m³)" : "Auto (Sack)"; }
   kConcreteMode.addEventListener("change", ()=>{ updateConcretePlaceholder(); persistCustomer(); });
@@ -677,32 +1015,15 @@ function validateProject(p){
     if(!p) { issues.push("Kein Kunde ausgewählt."); return issues; }
     const c = p.customer || {};
     const segs = Array.isArray(c.segments) ? c.segments : [];
-    const segmentsActive = !!(c.useSegments && segs.length);
-    const len = segmentsActive
-      ? segs.reduce((a,s)=>a+Math.max(0,toNum(s.length,0)),0)
-      : toNum(c.length, 0);
-
-    if(!len || len<=0) issues.push(segmentsActive ? "Zaunabschnitte: Länge fehlt." : "Zaunlänge fehlt (m).");
-
-    if(!segmentsActive){
-      if(!c.height) issues.push("Höhe fehlt.");
-      if(!c.system) issues.push("System fehlt.");
-    }else{
-      // Nur Segmente prüfen, die eine Länge haben
-      for(const s of segs){
-        if(toNum(s.length,0) <= 0) continue;
-        if(!s.height) issues.push(`Abschnitt ${s.label||""}: Höhe fehlt.`);
-        if(!s.system) issues.push(`Abschnitt ${s.label||""}: System fehlt.`);
-      }
-    }
-
+    const len = segs.length ? segs.reduce((a,s)=>a+Math.max(0,toNum(s.length ?? s.lengthM,0)),0) : toNum(c.length, 0);
+    const firstSeg = segs.find(s=>toNum(s.length ?? s.lengthM,0)>0) || segs[0] || null;
+    if(!len || len<=0) issues.push("Zaunlänge fehlt (m).");
+    if(!c.height && !firstSeg) issues.push("Höhe fehlt.");
+    if(!c.system && !firstSeg) issues.push("System fehlt.");
     // Sichtschutz nur wenn Länge vorhanden
     if(c.privacy==="yes" && (!len || len<=0)) issues.push("Sichtschutz gewählt, aber Zaunlänge fehlt.");
-
     // Tore: wenn gateType != none aber keine Varianten
-    if(c.gateType && c.gateType!=="none" && (!Array.isArray(c.gates) || !c.gates.length)){
-      issues.push("Tor-Typ gewählt, aber keine Tor-Varianten hinterlegt.");
-    }
+    if(c.gateType && c.gateType!=="none" && (!Array.isArray(c.gates) || !c.gates.length)) issues.push("Tor-Typ gewählt, aber keine Tor-Varianten hinterlegt.");
     return issues;
   }
 
@@ -712,25 +1033,41 @@ function validateProject(p){
     return false;
   }
 function computeTotals(c){
-    const segs = Array.isArray(c.segments)? c.segments.filter(s=>toNum(s.length,0)>0) : [];
-    const segmentsActive = !!(c.useSegments && segs.length>0);
+    // Robust: Segment-Mode automatisch aktiv, sobald Segmente mit Länge vorhanden sind.
+    const segsAll = Array.isArray(c && c.segments) ? c.segments : [];
+    const segs = segsAll.filter(s=>Math.max(0,toNum(s.length ?? s.lengthM,0))>0);
 
-    const totalLen = segmentsActive ? segs.reduce((a,s)=>a+toNum(s.length,0),0) : toNum(c.length,0);
+    const segmentsActive = (segs.length>0);
+
+    const totalLen = segmentsActive
+      ? segs.reduce((a,s)=>a + toNum(s.length ?? s.lengthM,0), 0)
+      : toNum(c && c.length,0);
+
     const panels = totalLen>0 ? Math.ceil(totalLen / PANEL_W) : 0;
 
     // Posts: contiguous fence => panels + 1 (wenn es überhaupt Panels gibt)
     const posts = panels>0 ? (panels + 1) : 0;
 
-    let corners = 0;
+    let cornerPosts = 0;
     if(segmentsActive){
-      corners = segs.reduce((a,s)=>a + clampInt(s.corners||0,0,999), 0);
+      cornerPosts = segs.reduce((a,s)=>a + clampInt(s.corners||0,0,999), 0);
     } else {
-      corners = clampInt(c.corners||0,0,999);
+      cornerPosts = clampInt((c && c.corners)||0,0,999);
     }
-    corners = clampInt(corners,0,posts);
+    cornerPosts = clampInt(cornerPosts,0,posts);
 
     const postStrips = posts; // 1 Leiste pro Pfosten (inkl. Ecken)
-    return { totalLen, panels, posts, corners, postStrips };
+
+    // Backward compatible keys
+    return {
+      totalLen,
+      lengthM: totalLen,
+      panels,
+      posts,
+      cornerPosts,
+      corners: cornerPosts,
+      postStrips
+    };
   }
   function computePrivacyRolls(c, totals){
     try{
@@ -745,7 +1082,7 @@ function computeTotals(c){
         let panelsAll = 0;
 
         for(const s of c.segments){
-          const segLen = Math.max(0, toNum(s.length,0));
+          const segLen = Math.max(0, toNum(s.length ?? s.lengthM,0));
           const segPriv = (s.privacy||c.privacy||"no")==="yes";
           if(!segLen){ continue; }
           lengthM += segLen;
@@ -790,7 +1127,9 @@ function computeTotals(c){
 
   function sysLabel(c){
     const h=Number(c.height)||160;
-    const base = (c.system==="Doppelstab")?"Doppelstab‑Matten":(c.system==="Aluminium")?"Alu‑Elemente":(c.system==="Holz")?"Holz‑Elemente":(c.system==="WPC")?"WPC‑Elemente":(c.system==="Diagonal Geflecht")?"Diagonal‑Geflecht":(c.system==="Tornado")?"Tornado‑Zaun":(c.system==="Elektrozaun")?"Elektrozaun":(c.system==="Alu")?"Alu‑Zaun":"Zaun‑Elemente";
+    const base = (c.system==="Doppelstab")?"Doppelstab‑Matten":(c.system==="Aluminium")?"Alu‑Elemente":(c.system==="Holz")?"Holz‑Elemente":(c.system==="WPC")?"WPC‑Elemente":(c.system==="Diagonal Geflecht")?"Diagonal‑Geflecht":(c.system==="Tornado")?"Tornado‑Zaun":(c.system==="Elektrozaun")?"Elektrozaun":"Zaun‑Elemente";
+    // Elektrozaun hat keine 2,50m-Elemente wie Matten – nur Stromleiter.
+    if(c.system==="Elektrozaun") return `${base} • ${h} cm`;
     return `${base} 2,50m • ${h} cm`;
   }
 
@@ -831,24 +1170,50 @@ function computeTotals(c){
 
 
   function computeConcrete(c){
-    const t = computeTotals(c);
+    // Beton nur für Zaunarten mit Fundament (keine Elektrozaun- oder Weidezaun-Pfosten)
     const g = gateSummary(c);
     const gateCount = Number(g.total||0);
     const gateHoles = gateCount*2; // Torpfosten (2 pro Tor)
-    const normalHoles = (Number(t.posts||0) + Number(t.cornerPosts||0));
+
+    let normalHoles = 0;
+
+    // Segmentmodus: pro Segment zählen (Elektro/Weide zählen NICHT)
+    const segs = (c && Array.isArray(c.segments)) ? c.segments : [];
+    const segmentsActive = !!(c && c.useSegments && segs.length);
+
+    if(segmentsActive){
+      let started = false;
+      for(const s of segs){
+        const len = Math.max(0, toNum(s.length ?? s.lengthM, 0));
+        const sys = normSystem((s.system||c.system||"Doppelstab"));
+        const isWeide = (sys==="Holz" && !!s.woodIsWeide);
+        if(sys==="Elektrozaun" || isWeide) { started = true; continue; }
+
+        const panels = len ? Math.ceil(len / PANEL_W) : 0;
+        if(!panels) { started = true; continue; }
+        const posts = panels + (!started ? 1 : 0);
+        normalHoles += posts;
+        started = true;
+      }
+    } else {
+      // Legacy: ohne Segmente – Beton nach Gesamtlänge
+      const t = computeTotals(c);
+      normalHoles = Number(t.posts||0);
+    }
+
     const sacks = (normalHoles*1.5) + (gateHoles*3);
     const m3 = (normalHoles*0.025) + (gateHoles*0.05);
     return {normalHoles, gateHoles, totalHoles: normalHoles+gateHoles, gateCount, sacks, m3};
   }
   function concreteDisplayValue(c, cc){
-    const lengthM = Math.max(0, toNum(c.length,0));
+    const lengthM = (computeTotals(c).lengthM||0);
     if(!lengthM) return "";
     if((c.concreteMode||"sacks")==="m3") return fmtN(cc.m3, 3);
     return fmtN(cc.sacks, 1);
   }
   function concreteHintText(c, cc){
-    const lengthM = Math.max(0, toNum(c.length,0));
-    if(!lengthM) return "Beton wird automatisch berechnet, sobald die Zaunlänge gesetzt ist.";
+    const lengthM = (computeTotals(c).lengthM||0);
+    if(!lengthM) return "Beton wird automatisch berechnet, sobald eine Zaunlänge (Abschnitt) gesetzt ist.";
     const parts = [];
     parts.push(`Auto: ${cc.totalHoles} Löcher`);
     if(cc.gateHoles>0) parts.push(`(normal ${cc.normalHoles}, Torpfosten ${cc.gateHoles})`);
@@ -898,18 +1263,20 @@ function computeTotals(c){
     if(it){ it.qty=Number(qty)||0; it.unit=unit||"Stk"; if(note) it.note=note; }
     else list.unshift({id:uid(), name, qty:Number(qty)||0, unit:unit||"Stk", note:note||""});
   }
-  // btnKCalc removed
-if(!p) return;
+
+  const _btnKCalc = el("btnKCalc");
+  if(_btnKCalc) _btnKCalc.addEventListener("click", ()=>{
+    const p=currentProject(); if(!p) return;
     const c=p.customer;
     const t=computeTotals(c);
-    if(!t.lengthM) return toast("Länge fehlt","Bitte Zaunlänge eingeben");
+    if(!t.lengthM) return toast("Länge fehlt","Bitte Länge in einem Abschnitt eingeben");
     p.chef.materials = (p.chef.materials||[]).filter(x=>x && x.name!=="Sichtschutz (Länge)");
     const mats=p.chef.materials;
 
     // Segment-Info (für Notizen/Übersicht)
-    const segs = (c && Array.isArray(c.segments)) ? c.segments.filter(s=>Math.max(0,toNum(s.length,0))>0) : [];
+    const segs = (c && Array.isArray(c.segments)) ? c.segments.filter(s=>Math.max(0,toNum(s.length ?? s.lengthM,0))>0) : [];
     const segNote = segs.length
-      ? ("Abschnitte: " + segs.map(s=>`${(s.label||"")||"?"} ${fmt(toNum(s.length,0))}m/${(s.height||c.height||"")}`).join(" • "))
+      ? ("Abschnitte: " + segs.map(s=>`${(s.label||"")||"?"} ${fmt(toNum(s.length ?? s.lengthM,0))}m/${(s.height||c.height||"")}`).join(" • "))
       : "";
 
     upsertMat(mats, "Zaun‑Übersicht", 1, "Stk",
@@ -919,7 +1286,7 @@ if(!p) return;
     const sysMap = new Map();
     if(segs.length){
       for(const s of segs){
-        const len = Math.max(0,toNum(s.length,0));
+        const len = Math.max(0,toNum(s.length ?? s.lengthM,0));
         if(!len) continue;
         const panels = Math.ceil(len / PANEL_W);
         const tmp = Object.assign({}, c, {system: (s.system||c.system), height:(s.height||c.height)});
@@ -1424,76 +1791,58 @@ if(!p) return;
     if(!active){ gateRows.innerHTML=""; return; }
 
     const n = gateLeafCount(c.gateType);
-    gateCollapsed = (localStorage.getItem("zaunplaner_gate_collapsed")==="1");
-    const countPill = `<div class="pill">Tore: <b>${c.gates.length||0}</b></div>`;
-    const selBox = (c.gates.length>1) ? `
-      <div class="row" style="margin-top:10px; align-items:end;">
-        <div style="flex:1">
-          <label>Tor auswählen</label>
-          <select id="gateSel" class="k"></select>
-        </div>
-        <div style="display:flex; gap:8px">
-          <button class="btn" type="button" id="btnGateToggle">${gateCollapsed ? "Liste anzeigen" : "Liste ausblenden"}</button>
-        </div>
-      </div>
-    ` : `
-      <div class="row" style="margin-top:10px; justify-content:flex-end;">
-        <button class="btn" type="button" id="btnGateToggle">${gateCollapsed ? "Details anzeigen" : "Details ausblenden"}</button>
-      </div>
-    `;
+
+    // Normalize bestehende Zeilen
+    if(!Array.isArray(c.gates)) c.gates=[];
+    c.gates = c.gates.map(g=>normalizeGateRow(c,g));
+    if(c.gates.length===0) c.gates=[gateDefaultRow(c)];
+
+    const count = c.gates.length||0;
 
     gateVariants.innerHTML = `
       <div class="pill">Maße immer als <b>Lichte Weite</b> (cm)</div>
       <div class="pill">${gateTypeLabel(c.gateType)}: ${n} Flügel</div>
-      <div class="pill">Gleichschenkelig oder asymmetrisch – alles editierbar</div>
-      ${countPill}
-      ${selBox}
+      <div class="pill">Varianten: <b>${count}</b></div>
+      <div class="row" style="margin-top:10px; justify-content:flex-end; gap:8px;">
+        <button class="btn" type="button" id="btnGateAllOpen">Alle öffnen</button>
+        <button class="btn" type="button" id="btnGateAllClose">Alle schließen</button>
+      </div>
     `;
 
-    // Normalize bestehende Zeilen
-    if(!Array.isArray(c.gates)) c.gates=[];
-    c.gates = c.gates.map(g=>normalizeGateRow(c,g)).filter(g=>g.qty>0 || true);
-
-    if(c.gates.length===0) c.gates=[gateDefaultRow(c)];
-
     gateRows.innerHTML="";
-    const btnT = gateVariants.querySelector("#btnGateToggle");
-    if(btnT){
-      btnT.addEventListener("click", ()=>{
-        gateCollapsed = !gateCollapsed;
-        localStorage.setItem("zaunplaner_gate_collapsed", gateCollapsed ? "1" : "0");
-        renderGateUI();
-      });
-    }
 
-    // Gate-Auswahl (bei mehreren)
-    const sel = gateVariants.querySelector("#gateSel");
-    if(sel){
-      if(gateUiIdx >= c.gates.length) gateUiIdx = 0;
-      sel.innerHTML = "";
-      c.gates.forEach((g,i)=>{
-        const lw = clampInt(g.openingCm||0,0,9999);
-        const opt=document.createElement("option");
-        opt.value=String(i);
-        opt.textContent = `Tor ${i+1} — ${gateTypeLabel(c.gateType)} LW ${lw} cm`;
-        sel.appendChild(opt);
-      });
-      sel.value=String(gateUiIdx);
-      sel.addEventListener("change", ()=>{
-        gateUiIdx = Number(sel.value)||0;
-        renderGateUI();
-      });
-    } else {
-      gateUiIdx = 0;
-    }
+    const makeSummary = (g, idx)=>{
+      const qty = clampInt(g.qty||0,0,999);
+      const h = clampInt(g.height||0,0,999);
+      const lw = clampInt(g.openingCm||0,0,9999);
+      return `Tor ${idx+1} • ${qty}× • Höhe ${h} cm • LW ${lw} cm`;
+    };
 
-    gateRows.style.display = gateCollapsed ? "none" : "";
-    if(gateCollapsed) return;
+    c.gates.forEach((g, idx)=>{
+      const det=document.createElement("details");
+      det.className="gateDet";
+      det.open = (idx===0); // erstes offen, Rest zu (übersichtlich)
+      const sum=document.createElement("summary");
+      sum.textContent = makeSummary(g, idx);
+      sum.style.cursor="pointer";
+      sum.style.userSelect="none";
+      det.appendChild(sum);
 
-    // Immer nur ein Tor auf dem Display bearbeiten (übersichtlich)
-    const idxShow = clampInt(gateUiIdx,0,Math.max(0,c.gates.length-1));
-    const g = c.gates[idxShow];
-    gateRows.appendChild(buildGateRow(g, idxShow));
+      const wrap=document.createElement("div");
+      wrap.style.marginTop="10px";
+      wrap.appendChild(buildGateRow(g, idx));
+      det.appendChild(wrap);
+      gateRows.appendChild(det);
+    });
+
+    const btnOpen = gateVariants.querySelector("#btnGateAllOpen");
+    const btnClose = gateVariants.querySelector("#btnGateAllClose");
+    if(btnOpen) btnOpen.addEventListener("click", ()=>{
+      gateRows.querySelectorAll("details").forEach(d=>d.open=true);
+    });
+    if(btnClose) btnClose.addEventListener("click", ()=>{
+      gateRows.querySelectorAll("details").forEach(d=>d.open=false);
+    });
   }
 
   function buildGateRow(g, idx){
@@ -1749,48 +2098,62 @@ if(!p) return;
   const MAT_ORDER = ["matten","pfosten","eckpfosten","leisten","beton","other"];
   function matCategory(name){
     const n = String(name||"").toLowerCase();
-    if(n.indexOf("beton")!==-1) return "beton";
+    if(n.includes("beton")) return "beton";
 
-    // Matten/Elemente: Doppelstab, Alu, Holz, WPC, Tornado, Diagonal, Elektro
+    // NOTE: Elektrozaun hat KEINE Matten/Elemente. Stromleiter (Litze/Draht/Band) kommt in "other".
+    if(n.includes("litze") || n.includes("draht") || n.includes("band") || n.includes("breitband") || n.includes("stromleiter")) return "other";
+
+    // Matten/Elemente: Doppelstab, Alu, Holz, WPC, Tornado, Diagonal
     if(
-      n.indexOf("matte")!==-1 ||
-      n.indexOf("element")!==-1 ||
-      n.indexOf("doppelstab")!==-1 ||
-      n.indexOf(" alu")!==-1 || n.startsWith("alu") ||
-      n.indexOf(" wpc")!==-1 || n.startsWith("wpc") ||
-      n.indexOf(" holz")!==-1 || n.startsWith("holz") ||
-      n.indexOf("tornado")!==-1 ||
-      n.indexOf("diagonal")!==-1 ||
-      n.indexOf("elektrozaun")!==-1
+      n.includes("matte") ||
+      n.includes("element") ||
+      n.includes("doppelstab") ||
+      (n.includes(" alu") || n.startsWith("alu")) ||
+      (n.includes(" wpc") || n.startsWith("wpc")) ||
+      (n.includes(" holz") || n.startsWith("holz")) ||
+      n.includes("tornado") ||
+      n.includes("diagonal")
     ) return "matten";
 
-    if(n.indexOf("eckpf")!==-1 || n.indexOf("eck pf")!==-1 || n.indexOf("eck-pf")!==-1) return "eckpfosten";
+    if(n.includes("eckpf") || n.includes("eck pf") || n.includes("eck-pf")) return "eckpfosten";
 
     // Leisten vor Pfosten (damit "Pfostenleisten" korrekt einsortiert wird)
-    if(n.indexOf("leiste")!==-1 || n.indexOf("u-leist")!==-1 || n.indexOf("u leist")!==-1 || n.indexOf("torleiste")!==-1) return "leisten";
+    if(n.includes("leiste") || n.includes("u-leist") || n.includes("u leist") || n.includes("torleiste")) return "leisten";
 
-    if(n.indexOf("pfosten")!==-1 && n.indexOf("eck")===-1) return "pfosten";
+    if(n.includes("pfosten") && !n.includes("eck")) return "pfosten";
     return "other";
   }
   function sortMaterials(list){
     const arr = Array.isArray(list) ? list.slice() : [];
-    const getSizeCm = (name)=>{
-      const s=String(name||"");
-      let m=null, last=null;
-      const re=/([0-9]{2,3})\s*cm\b/gi;
-      while((m=re.exec(s))){ last=m[1]; }
-      return last? parseInt(last,10) : null;
+
+    const catIndex = (name)=>{
+      const idx = MAT_ORDER.indexOf(matCategory(name));
+      return (idx>=0) ? idx : MAT_ORDER.length;
     };
+
+    const hNum = (nm)=>{
+      const s = String(nm||"").replace(/,/g,'.');
+      let m = s.match(/(\d{2,3})\s*cm\b/i);
+      if(m){ const v=parseInt(m[1],10); return Number.isFinite(v)?v:9999; }
+      m = s.match(/(\d{3,4})\s*mm\b/i);
+      if(m){ const v=parseInt(m[1],10); const cm = Math.round(v/10); return Number.isFinite(cm)?cm:9999; }
+      m = s.match(/\b(\d(?:\.\d{1,2})?)\s*m\b/i);
+      if(m){ const v=parseFloat(m[1]); if(Number.isFinite(v) && v>0 && v<10) return Math.round(v*100); }
+      m = s.match(/\bH(?:öhe)?\s*[: ]\s*(\d{2,3})\b/i);
+      if(m){ const v=parseInt(m[1],10); return Number.isFinite(v)?v:9999; }
+      m = s.match(/(\d{2,3})\s*[x×]\s*(\d{2,3})\b/);
+      if(m){ const a=parseInt(m[1],10), b=parseInt(m[2],10); const hi=Math.max(a,b); if(Number.isFinite(hi) && hi<=300) return hi; }
+      return 9999;
+    };
+
     arr.sort((a,b)=>{
-      const ca = MAT_ORDER.indexOf(matCategory(a && a.name));
-      const cb = MAT_ORDER.indexOf(matCategory(b && b.name));
+      const ca = catIndex(a && a.name);
+      const cb = catIndex(b && b.name);
       if(ca!==cb) return ca-cb;
 
-      const sa = getSizeCm(a && a.name);
-      const sb = getSizeCm(b && b.name);
-      if(sa!=null && sb!=null && sa!==sb) return sa-sb;
-      if(sa!=null && sb==null) return -1;
-      if(sa==null && sb!=null) return 1;
+      const ha = hNum(a && a.name);
+      const hb = hNum(b && b.name);
+      if(ha!==hb) return ha-hb;
 
       return String((a&&a.name)||"").localeCompare(String((b&&b.name)||""),"de",{sensitivity:"base",numeric:true});
     });
@@ -1808,7 +2171,7 @@ if(!p) return;
 
     // Segmente aktiv?
     const segsAll = Array.isArray(c.segments) ? c.segments : [];
-    const segs = segsAll.filter(s=>Math.max(0,toNum(s.length,0))>0);
+    const segs = segsAll.filter(s=>Math.max(0,toNum(s.length ?? s.lengthM,0))>0);
 
     // Wenn Segmente aktiv sind: alte manuelle Gesamt-Zeilen (Matten/Pfosten/Leisten ohne "Abschnitt") entfernen,
     // damit nichts doppelt erscheint. (Segmente sind dann die Quelle der Wahrheit.)
@@ -1830,9 +2193,10 @@ if(!p) return;
     try{ cc = computeConcrete(c); }catch(_){ }
     const concreteQty = (c.concreteMode==="m3") ? (cc ? cc.m3 : 0) : (cc ? cc.sacks : 0);
     const concreteUnit = (c.concreteMode==="m3") ? "m³" : "Sack";
+    const concreteLabel = (c.concreteMode==="m3") ? "Fertigbeton (m³)" : "Beton (Sack)";
 
     // Ecken (gesamt) — nach max. Zaunhöhe
-    const corners = clampInt(c.corners||0, 0, 99);
+    const corners = segs.length ? segs.reduce((a,s)=>a+clampInt(s.corners||0,0,999),0) : clampInt(c.corners||0, 0, 99);
     const maxH = segs.length ? Math.max(...segs.map(s=>clampInt(s.height||c.height||160))) : clampInt(c.height||160);
     const cornerPostLen = postLenCm(maxH);
     const baseSystem = (c.system||"Doppelstab");
@@ -1849,33 +2213,143 @@ if(!p) return;
       const normalByH = new Map();   // height -> qty
       const cornersByH = new Map();  // height -> qty
       const stripsByH  = new Map();  // height -> qty (Pfostenleisten = alle Pfosten)
-      let privacyStripM_total = 0;
+      
+      const electroNormal = new Map(); // key -> qty
+      const electroCorners = new Map(); // key -> qty
+
+      const weideNormal = new Map(); // key -> qty
+      const weideCorners = new Map(); // key -> qty
+      const weideLitzeByRoll = new Map();
+      const weideDrahtByRoll = new Map();
+      const weideBandByRoll = new Map();
+      let weideLitzeM_total = 0;
+      let weideDrahtM_total = 0;
+      let weideBandM_total = 0;
+      let weideBoardsM_total = 0;
+      let wIsoLD_normal = 0, wIsoLD_corner = 0, wIsoBand_normal = 0, wIsoBand_corner = 0;
+
+let privacyStripM_total = 0;
+      const electroLitzeByRoll = new Map();
+      const electroDrahtByRoll = new Map();
+      const electroBandByRoll = new Map();
+      let electroLitzeM_total = 0;
+      let electroDrahtM_total = 0;
+      let electroBandM_total = 0;
+      let eIsoLD_normal = 0, eIsoLD_corner = 0, eIsoBand_normal = 0, eIsoBand_corner = 0;
 
       for(const s of segs){
         const label = (s.label||"?").toString();
-        const len = Math.max(0,toNum(s.length,0));
+        const len = Math.max(0,toNum(s.length ?? s.lengthM,0));
         const h = clampInt(s.height||c.height||160);
-        const panels = len ? Math.ceil(len / PANEL_W) : 0;
-        if(!panels) continue;
+        const sys = (s.system||c.system||"Doppelstab");
 
-        const posts = panels + (!started ? 1 : 0);
+        let panels = 0; // nur für Matten/Elemente relevant
+        let posts = 0;
+
+        if(normSystem(sys)==="Elektrozaun"){
+          const spacing = Math.max(1, toNum(s.electroSpacing, 3));
+          const intervals = len ? Math.ceil(len / spacing) : 0;
+          if(!intervals) continue;
+          posts = intervals + (!started ? 1 : 0);
+        } else if(normSystem(sys)==="Holz" && !!s.woodIsWeide){
+          const spacing = Math.max(1, toNum(s.weideSpacing, 3));
+          const intervals = len ? Math.ceil(len / spacing) : 0;
+          if(!intervals) continue;
+          posts = intervals + (!started ? 1 : 0);
+        } else {
+          panels = len ? Math.ceil(len / PANEL_W) : 0;
+          if(!panels) continue;
+          posts = panels + (!started ? 1 : 0);
+        }
         started = true;
 
         const cornersSeg = clampInt(s.corners||0,0,posts);
         const normalPosts = Math.max(0, posts - cornersSeg);
-
-        // Matten (pro Abschnitt, da ggf. unterschiedliche Systeme/Höhen)
-        const sys = (s.system||c.system||"Doppelstab");
+        // Matten/Elemente nur bei NICHT-Elektrozaun (Elektrozaun hat Stromleiter statt Matten)
         const sysObj = { system: sys, height: h };
-        const matLbl = `Abschnitt ${label} — ${sysLabel(sysObj)}`;
-        auto.push({ k:`auto_matten_${label}`, label: matLbl, qty: panels, unit:"Stk" });
+        if(normSystem(sys)!=="Elektrozaun" && !(normSystem(sys)==="Holz" && !!s.woodIsWeide)){
+          const matLbl = `Abschnitt ${label} — ${sysLabel(sysObj)}`;
+          auto.push({ k:`auto_matten_${label}`, label: matLbl, qty: panels, unit:"Stk" });
+        }
 
-        // Summen je Höhe
-        normalByH.set(h, (normalByH.get(h)||0) + normalPosts);
-        cornersByH.set(h, (cornersByH.get(h)||0) + cornersSeg);
-        stripsByH.set(h, (stripsByH.get(h)||0) + posts);
+        // Summen: je Höhe (Standard), Elektrozaun (ohne Holzarten) oder Weidezaun (Holzpfosten)
+        if(normSystem(sys)==="Elektrozaun"){
+          const pLen = clampInt((h+60), 120, 400);
+          const key = `${pLen} cm`;
+          electroNormal.set(key, (electroNormal.get(key)||0) + normalPosts);
+          electroCorners.set(key, (electroCorners.get(key)||0) + cornersSeg);
 
-        // Sichtschutz: nur Gesamt-Rollen zählen (aus Streifen-Metern)
+          // Stromleiter (Litze/Draht/Band): Meter = Länge × Anzahl Stränge (+ Reserve%)
+          const extraPct = toNum(s.electroExtraPct, 10);
+          const baseM = len * (1 + (extraPct/100));
+          const litzeN = clampInt(toNum(s.electroLitze,0), 0, 50);
+          const drahtN = clampInt(toNum(s.electroDraht,0), 0, 50);
+          const bandN  = clampInt(toNum(s.electroBand,0),  0, 50);
+
+          const litzeM = baseM * litzeN;
+          const drahtM = baseM * drahtN;
+          const bandM  = baseM * bandN;
+          electroLitzeM_total += litzeM;
+          electroDrahtM_total += drahtM;
+          electroBandM_total  += bandM;
+
+          const litzeRoll = clampInt(toNum(s.electroLitzeRoll,400), 50, 5000);
+          const drahtRoll = clampInt(toNum(s.electroDrahtRoll,625), 50, 5000);
+          const bandRoll  = clampInt(toNum(s.electroBandRoll,200),  50, 5000);
+
+          if(litzeM>0) electroLitzeByRoll.set(litzeRoll, (electroLitzeByRoll.get(litzeRoll)||0) + litzeM);
+          if(drahtM>0) electroDrahtByRoll.set(drahtRoll, (electroDrahtByRoll.get(drahtRoll)||0) + drahtM);
+          if(bandM>0)  electroBandByRoll.set(bandRoll,  (electroBandByRoll.get(bandRoll)||0)  + bandM);
+
+          // Isolatoren: abhängig von Leiter-Art + Anzahl Pfosten/Ecken
+          eIsoLD_normal += (litzeN + drahtN) * normalPosts;
+          eIsoLD_corner += (litzeN + drahtN) * cornersSeg;
+          eIsoBand_normal += bandN * normalPosts;
+          eIsoBand_corner += bandN * cornersSeg;
+
+        } else if(normSystem(sys)==="Holz" && !!s.woodIsWeide){
+          const wood = String(s.weideWood||"Robinie").trim() || "Robinie";
+          const pLen = clampInt(toNum(s.weidePostLen,0) || (h+60), 120, 400);
+          const key = `${pLen} cm • ${wood}`;
+          weideNormal.set(key, (weideNormal.get(key)||0) + normalPosts);
+          weideCorners.set(key, (weideCorners.get(key)||0) + cornersSeg);
+
+          const extraPct = toNum(s.weideExtraPct, 10);
+          const baseM = len * (1 + (extraPct/100));
+          const litzeN = clampInt(toNum(s.weideLitze,0), 0, 50);
+          const drahtN = clampInt(toNum(s.weideDraht,0), 0, 50);
+          const bandN  = clampInt(toNum(s.weideBand,0),  0, 50);
+          const boardsRows = clampInt(toNum(s.weideBoards,0), 0, 50);
+
+          const litzeM = baseM * litzeN;
+          const drahtM = baseM * drahtN;
+          const bandM  = baseM * bandN;
+          const boardsM = baseM * boardsRows;
+
+          weideLitzeM_total += litzeM;
+          weideDrahtM_total += drahtM;
+          weideBandM_total  += bandM;
+          weideBoardsM_total += boardsM;
+
+          const litzeRoll = clampInt(toNum(s.weideLitzeRoll,400), 50, 5000);
+          const drahtRoll = clampInt(toNum(s.weideDrahtRoll,625), 50, 5000);
+          const bandRoll  = clampInt(toNum(s.weideBandRoll,200),  50, 5000);
+
+          if(litzeM>0) weideLitzeByRoll.set(litzeRoll, (weideLitzeByRoll.get(litzeRoll)||0) + litzeM);
+          if(drahtM>0) weideDrahtByRoll.set(drahtRoll, (weideDrahtByRoll.get(drahtRoll)||0) + drahtM);
+          if(bandM>0)  weideBandByRoll.set(bandRoll,  (weideBandByRoll.get(bandRoll)||0)  + bandM);
+
+          // Isolatoren: abhängig von Leiter-Art + Anzahl Pfosten/Ecken
+          wIsoLD_normal += (litzeN + drahtN) * normalPosts;
+          wIsoLD_corner += (litzeN + drahtN) * cornersSeg;
+          wIsoBand_normal += bandN * normalPosts;
+          wIsoBand_corner += bandN * cornersSeg;
+} else {
+          normalByH.set(h, (normalByH.get(h)||0) + normalPosts);
+          cornersByH.set(h, (cornersByH.get(h)||0) + cornersSeg);
+          stripsByH.set(h, (stripsByH.get(h)||0) + posts);
+        }
+// Sichtschutz: nur Gesamt-Rollen zählen (aus Streifen-Metern)
         if(String(s.privacy||"no")==="yes"){
           const ss = computePrivacyForSegment(len, h, c);
           privacyStripM_total += (ss.totalStripM || 0);
@@ -1892,6 +2366,74 @@ if(!p) return;
         if(e>0) auto.push({ k:`auto_eckpfosten_${h}`, label:`Eckpfosten ${h} cm`, qty:e, unit:"Stk" });
         if(l>0) auto.push({ k:`auto_leisten_${h}`, label:`Pfostenleisten ${h} cm`, qty:l, unit:"Stk" });
       }
+      // Elektrozaun-Pfosten nach Holzart/Länge
+      if((electroNormal && electroNormal.size) || (electroCorners && electroCorners.size)){
+        const allKeys = Array.from(new Set([ ...(electroNormal?electroNormal.keys():[]), ...(electroCorners?electroCorners.keys():[]) ]));
+        allKeys.sort((a,b)=>{
+          const ha = toNum(String(a).match(/(\d{2,3})\s*cm/i)?.[1] || "", 9999);
+          const hb = toNum(String(b).match(/(\d{2,3})\s*cm/i)?.[1] || "", 9999);
+          if(ha!==hb) return ha-hb;
+          return String(a).localeCompare(String(b),"de",{sensitivity:"base",numeric:true});
+        });
+        for(const key of allKeys){
+          const n = electroNormal.get(key)||0;
+          const e = electroCorners.get(key)||0;
+          const slug = String(key).toLowerCase().replace(/[^a-z0-9]+/g,"_").slice(0,40);
+          if(n>0) auto.push({ k:`auto_elektr_pfosten_${slug}`, label:`Elektrozaun Pfosten ${key}`, qty:n, unit:"Stk" });
+          if(e>0) auto.push({ k:`auto_elektr_eckpfosten_${slug}`, label:`Elektrozaun Eckpfosten (verstärkt) ${key}`, qty:e, unit:"Stk" });
+        }
+      }
+
+
+
+      // Weidezaun (Holz): Pfosten/Eckpfosten (dicker Stamm)
+      if(weideNormal.size || weideCorners.size){
+        const allKeys = Array.from(new Set([...weideNormal.keys(), ...weideCorners.keys()])).sort((a,b)=> String(a).localeCompare(String(b), "de"));
+        for(const key of allKeys){
+          const n = weideNormal.get(key)||0;
+          const e = weideCorners.get(key)||0;
+          const slug = String(key).toLowerCase().replace(/[^a-z0-9]+/g,"_").slice(0,40);
+          if(n>0) auto.push({ k:`auto_weide_pfosten_${slug}`, label:`Weidezaun Pfosten ${key}`, qty:n, unit:"Stk" });
+          if(e>0) auto.push({ k:`auto_weide_eckpfosten_${slug}`, label:`Weidezaun Eckpfosten (dicker Stamm) ${key}`, qty:e, unit:"Stk" });
+        }
+      }
+
+      // Weidezaun: Isolatoren (abhängig von Leiter-Art)
+      if(wIsoLD_normal>0) auto.push({ k:`auto_weide_iso_ld`, label:`Weidezaun Isolator (Litze/Draht)`, qty:wIsoLD_normal, unit:"Stk" });
+      if(wIsoLD_corner>0) auto.push({ k:`auto_weide_iso_ld_ecke`, label:`Weidezaun Eckisolator (Litze/Draht)`, qty:wIsoLD_corner, unit:"Stk" });
+      if(wIsoBand_normal>0) auto.push({ k:`auto_weide_iso_band`, label:`Weidezaun Breitband-Isolator bis 40 mm`, qty:wIsoBand_normal, unit:"Stk" });
+      if(wIsoBand_corner>0) auto.push({ k:`auto_weide_iso_band_ecke`, label:`Weidezaun Breitband-Eckisolator bis 40 mm`, qty:wIsoBand_corner, unit:"Stk" });
+
+      // Elektrozaun: Isolatoren (abhängig von Leiter-Art)
+      if(eIsoLD_normal>0) auto.push({ k:`auto_elektr_iso_ld`, label:`Elektrozaun Isolator (Litze/Draht)`, qty:eIsoLD_normal, unit:"Stk" });
+      if(eIsoLD_corner>0) auto.push({ k:`auto_elektr_iso_ld_ecke`, label:`Elektrozaun Eckisolator (Litze/Draht)`, qty:eIsoLD_corner, unit:"Stk" });
+      if(eIsoBand_normal>0) auto.push({ k:`auto_elektr_iso_band`, label:`Elektrozaun Breitband-Isolator bis 40 mm`, qty:eIsoBand_normal, unit:"Stk" });
+      if(eIsoBand_corner>0) auto.push({ k:`auto_elektr_iso_band_ecke`, label:`Elektrozaun Breitband-Eckisolator bis 40 mm`, qty:eIsoBand_corner, unit:"Stk" });
+
+      // Elektrozaun: Stromleiter (gesamt)
+      const pushElectroCon = (baseKey, labelBase, totalM, byRoll)=>{
+        if(!totalM || totalM<=0) return;
+        auto.push({ k: baseKey + '_m', label: `${labelBase} (m)`, qty: Math.round(totalM*10)/10, unit: 'm' });
+        const keys = Array.from((byRoll||new Map()).keys()).sort((a,b)=>a-b);
+        for(const r of keys){
+          const m = byRoll.get(r)||0;
+          const rolls = (m>0) ? Math.ceil(m / r) : 0;
+          if(rolls>0) auto.push({ k: `${baseKey}_roll_${r}`, label: `${labelBase} Rollen (${r} m)`, qty: rolls, unit: 'Stk' });
+        }
+      };
+      pushElectroCon('auto_elektro_litze', 'Elektrozaun Litze', electroLitzeM_total, electroLitzeByRoll);
+      pushElectroCon('auto_elektro_draht', 'Elektrozaun Draht', electroDrahtM_total, electroDrahtByRoll);
+      pushElectroCon('auto_elektro_band',  'Elektrozaun Band',  electroBandM_total,  electroBandByRoll);
+
+      // Weidezaun Leiter (wie Elektrozaun) + Bretter
+      pushElectroCon('auto_weide_litze', 'Weidezaun Litze', weideLitzeM_total, weideLitzeByRoll);
+      pushElectroCon('auto_weide_draht', 'Weidezaun Draht', weideDrahtM_total, weideDrahtByRoll);
+      pushElectroCon('auto_weide_band',  'Weidezaun Band',  weideBandM_total,  weideBandByRoll);
+
+      if(weideBoardsM_total>0){
+        auto.push({ k:'auto_weide_bretter_m', label:'Weidezaun Bretter (Laufmeter)', qty: weideBoardsM_total, unit:'m' });
+      }
+
 
       // Sichtschutz Rollen gesamt
       if(privacyStripM_total>0){
@@ -1901,7 +2443,7 @@ if(!p) return;
       }
 
 
-      if(corners>0){
+      if(false && corners>0){
         if(baseSystem==="Doppelstab"){
           auto.push({ k:`auto_eckpfosten_${maxH}`, label:`Eckpfosten ${maxH} cm`, qty: corners, unit:"Stk" });
           auto.push({ k:`auto_leisten_ecken_${maxH}`, label:`Pfostenleisten (Ecken) ${maxH} cm`, qty: corners, unit:"Stk" });
@@ -1930,7 +2472,7 @@ if(!p) return;
     }
 
     // Beton ist immer gesamt
-    auto.push({ k:"auto_beton", label:"Beton", qty:concreteQty||0, unit:concreteUnit });
+    auto.push({ k:"auto_beton", label:concreteLabel, qty:concreteQty||0, unit:concreteUnit });
 
     const mats = p.chef.materials;
 
@@ -1967,6 +2509,8 @@ if(!p) return;
 
     // Cleanup: alte Auto-Zeilen entfernen, die nicht mehr zu den aktuellen Auto-Keys passen
     p.chef.materials = (p.chef.materials||[]).filter(x=>!x || !x.autoKey || autoKeys[x.autoKey]);
+    // dauerhaft sortiert speichern (Chef-Tab bleibt immer in der gleichen Reihenfolge)
+    p.chef.materials = sortMaterials(p.chef.materials||[]);
   }
 
 // Chef
@@ -2018,7 +2562,7 @@ if(!p) return;
 
     function postLenCm(h){ h=clampInt(h||160,60,300); return clampInt(h+60,120,400); }
 
-    const segs = (p && p.customer && Array.isArray(p.customer.segments)) ? p.customer.segments.filter(s=>Math.max(0,toNum(s.length,0))>0) : [];
+    const segs = (p && p.customer && Array.isArray(p.customer.segments)) ? p.customer.segments.filter(s=>Math.max(0,toNum(s.length ?? s.lengthM,0))>0) : [];
     if(!segs.length){
       box.style.display = "none";
       if(pill) pill.textContent = "—";
@@ -2028,7 +2572,7 @@ if(!p) return;
     if(pill) pill.textContent = `${segs.length} Abschnitt${segs.length===1?"":"e"}`;
 
     const rows = segs.map(s=>{
-      const len = Math.max(0,toNum(s.length,0));
+      const len = Math.max(0,toNum(s.length ?? s.lengthM,0));
       const panels = len ? Math.ceil(len / PANEL_W) : 0;
       const posts = panels ? (panels + 1) : 0;
       const ht = s.height || (p.customer.height||160);
@@ -2475,7 +3019,7 @@ function refreshCustomerUI(){
     const p=currentProject(); if(!p) return;
     const c=p.customer;
 
-    const segActive = (c && Array.isArray(c.segments)) ? c.segments.some(s=>Math.max(0,toNum(s.length,0))>0) : false;
+    const segActive = (c && Array.isArray(c.segments)) ? c.segments.some(s=>Math.max(0,toNum(s.length ?? s.lengthM,0))>0) : false;
     const tt = computeTotals(c);
 
     el("kundeTitle").textContent = `👤 Kunde: ${p.title}`;
@@ -2581,6 +3125,8 @@ function refreshCustomerUI(){
     if(!s.label) s.label = String.fromCharCode(65+i);
     if(s.corners==null || s.corners==="") s.corners = 0;
     s.corners = clampInt(s.corners,0,999);
+    s.system = normSystem(s.system || p.customer.system || "Doppelstab");
+    if(!s.color) s.color = (colorsForSystem(s.system)[0] || "Anthrazit (RAL 7016)");
     return s;
   });
 
@@ -2608,10 +3154,10 @@ function refreshCustomerUI(){
         segAddLabel.dataset.ready="1";
       }
 
-      segList.innerHTML = "";
+      segList.innerHTML = woodSpeciesDatalistHTML();
       for(const s of segs){
         const sum = `Abschnitt ${escapeHtml(s.label||"")}`;
-        const len = toNum(s.length,0);
+        const len = toNum(s.length ?? s.lengthM,0);
         const ht = s.height || "";
         const sys = s.system || "";
         const col = s.color || "";
@@ -2638,19 +3184,106 @@ function refreshCustomerUI(){
               <label>System</label>
               <select data-k="system">
                 <option>Doppelstab</option>
-                                <option>Diagonalgeflecht</option>
+                <option>Aluminium</option>
+                <option>Holz</option>
+                <option>WPC</option>
+                <option>Diagonalgeflecht</option>
                 <option>Tornado</option>
                 <option>Elektrozaun</option>
-                <option>Alu</option>
               </select>
             </div>
             <div style="grid-column: span 2;">
               <label>Farbe</label>
-              <input data-k="color" value="${s.color||""}" placeholder="z.B. Anthrazit (RAL 7016)" />
+              <select data-k="color"></select>
             </div>
             <div>
               <label>Eckpfosten</label>
-              <input data-k="corners" type="number" min="0" step="1" inputmode="numeric" value="${s.corners||0}" placeholder="0" />
+              <input data-k="corners" inputmode="numeric" value="${s.corners||0}" placeholder="0" />
+            </div>
+<div class="jsElectroOnly" style="display:none;">
+              <label>Pfostenabstand (m)</label>
+              <input data-k="electroSpacing" inputmode="decimal" value="${s.electroSpacing||""}" placeholder="z.B. 3,0" />
+            </div>
+            <div class="jsElectroOnly" style="display:none;">
+              <label>Reserve % (Zugabe)</label>
+              <input data-k="electroExtraPct" inputmode="decimal" value="${s.electroExtraPct||""}" placeholder="z.B. 10" />
+            </div>
+
+            <div class="jsElectroOnly" style="grid-column: span 3; display:none;">
+              <div class="card" style="padding:10px; background:rgba(255,255,255,0.04);">
+                <div class="row" style="justify-content:space-between; align-items:center; gap:10px;">
+                  <b>Stromleiter (Elektrozaun)</b>
+                  <span class="hint">Meter = Zaunlänge × Anzahl Stränge (+ Reserve)</span>
+                </div>
+                <div class="grid3" style="margin-top:8px;">
+                  <div style="grid-column: span 3;">
+                    <label>Preset (Tierart)</label>
+                    <select data-k="electroPreset">
+                      <option value="">—</option>
+                      <option value="pferd">Pferde (2–3 Leiter)</option>
+                      <option value="rind">Rinder/Mutterkühe (2–3 Drähte)</option>
+                      <option value="schaf">Schafe (3–4 Drähte)</option>
+                      <option value="ziege">Ziegen (3–5 Drähte)</option>
+                      <option value="wolf">Wolf/Herdenschutz (4–5 Drähte)</option>
+                      <option value="gefluegel">Geflügel (5–7 Drähte)</option>
+                    </select>
+                    <div class="hint">Preset setzt Vorschläge (du kannst danach alles anpassen).</div>
+                  </div>
+                </div>
+                <div class="grid3" style="margin-top:8px;">
+
+                  <div>
+                    <label>Litze: Anzahl Stränge</label>
+                    <input data-k="electroLitze" inputmode="numeric" value="${s.electroLitze||""}" placeholder="z.B. 3" />
+                  </div>
+                  <div>
+                    <label>Litze: Rollenlänge</label>
+                    <select data-k="electroLitzeRoll">
+                      <option value="200">200 m</option>
+                      <option value="400">400 m</option>
+                      <option value="1000">1000 m</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>&nbsp;</label>
+                    <div class="hint">z.B. 200/400/1000 m Rollen sind üblich</div>
+                  </div>
+
+                  <div>
+                    <label>Draht: Anzahl Drähte</label>
+                    <input data-k="electroDraht" inputmode="numeric" value="${s.electroDraht||""}" placeholder="z.B. 2" />
+                  </div>
+                  <div>
+                    <label>Draht: Rollenlänge</label>
+                    <select data-k="electroDrahtRoll">
+                      <option value="250">250 m</option>
+                      <option value="500">500 m</option>
+                      <option value="625">625 m</option>
+                      <option value="1000">1000 m</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>&nbsp;</label>
+                    <div class="hint">625 m ist typisch bei 25 kg / 2,5 mm</div>
+                  </div>
+
+                  <div>
+                    <label>Band: Anzahl Bänder</label>
+                    <input data-k="electroBand" inputmode="numeric" value="${s.electroBand||""}" placeholder="z.B. 1" />
+                  </div>
+                  <div>
+                    <label>Band: Rollenlänge</label>
+                    <select data-k="electroBandRoll">
+                      <option value="200">200 m</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label>&nbsp;</label>
+                    <div class="hint">Breitband ist oft 200 m</div>
+                  </div>
+                </div>
+                <div class="jsElectroCalc hint" style="margin-top:8px;"></div>
+              </div>
             </div>
 
             <div>
@@ -2660,6 +3293,103 @@ function refreshCustomerUI(){
                 <option value="yes">Ja</option>
               </select>
             </div>
+
+            <div class="jsWoodOnly">
+              <label style="display:flex; align-items:center; gap:8px; font-weight:800;">
+                <input data-k="woodIsWeide" type="checkbox" ${s.woodIsWeide ? "checked" : ""} />
+                <span>Weidezaun (Holzpfosten + Leiter/Bretter)</span>
+              </label>
+              <div class="hint" style="margin-top:4px;">Für Weidezaun werden keine Matten berechnet – stattdessen Pfosten + Leiter (Litze/Draht/Band) + optional Bretter.</div>
+            </div>
+
+            <div class="jsWeideOnly" style="grid-column: span 2; display:none;">
+              <label>Holzart (Pfosten)</label>
+              <input data-k="weideWood" list="jsWoodSpeciesDL" value="${escapeHtml(s.weideWood||"")}" placeholder="z.B. Robinie, Kastanie, Douglasie" />
+            </div>
+            <div class="jsWeideOnly" style="display:none;">
+              <label>Pfostenlänge (cm)</label>
+              <input data-k="weidePostLen" inputmode="numeric" value="${s.weidePostLen||""}" placeholder="z.B. 220" />
+            </div>
+
+            <div class="jsWeideOnly" style="display:none;">
+              <label>Pfostenabstand (m)</label>
+              <input data-k="weideSpacing" inputmode="decimal" value="${s.weideSpacing||""}" placeholder="z.B. 3,0" />
+            </div>
+            <div class="jsWeideOnly" style="display:none;">
+              <label>Reserve % (Zugabe)</label>
+              <input data-k="weideExtraPct" inputmode="decimal" value="${s.weideExtraPct||""}" placeholder="z.B. 10" />
+            </div>
+            <div class="jsWeideOnly" style="display:none;">
+              <label>Preset (Tierart)</label>
+              <select data-k="weidePreset">
+                <option value="">—</option>
+                <option value="pferd">Pferd</option>
+                <option value="rind">Rind</option>
+                <option value="schaf">Schaf</option>
+                <option value="ziege">Ziege</option>
+                <option value="wolf">Wolf/Wild</option>
+                <option value="gefluegel">Geflügel</option>
+              </select>
+            </div>
+
+            <div class="jsWeideOnly" style="grid-column: span 3; display:none;">
+              <div class="card" style="padding:10px;">
+                <b>Leiter & Bretter</b>
+                <div class="grid3" style="margin-top:8px;">
+                  <div>
+                    <label>Litze: Stränge</label>
+                    <input data-k="weideLitze" inputmode="numeric" value="${s.weideLitze||""}" placeholder="0" />
+                  </div>
+                  <div>
+                    <label>Litze: Rollenlänge</label>
+                    <select data-k="weideLitzeRoll">
+                      <option value="200">200 m</option>
+                      <option value="400">400 m</option>
+                      <option value="1000">1000 m</option>
+                    </select>
+                  </div>
+                  <div></div>
+
+                  <div>
+                    <label>Draht: Drähte</label>
+                    <input data-k="weideDraht" inputmode="numeric" value="${s.weideDraht||""}" placeholder="0" />
+                  </div>
+                  <div>
+                    <label>Draht: Rollenlänge</label>
+                    <select data-k="weideDrahtRoll">
+                      <option value="625">625 m</option>
+                      <option value="250">250 m</option>
+                      <option value="500">500 m</option>
+                    </select>
+                  </div>
+                  <div></div>
+
+                  <div>
+                    <label>Band: Bänder</label>
+                    <input data-k="weideBand" inputmode="numeric" value="${s.weideBand||""}" placeholder="0" />
+                  </div>
+                  <div>
+                    <label>Band: Rollenlänge</label>
+                    <select data-k="weideBandRoll">
+                      <option value="200">200 m</option>
+                      <option value="100">100 m</option>
+                      <option value="300">300 m</option>
+                    </select>
+                  </div>
+                  <div></div>
+
+                  <div>
+                    <label>Bretter: Reihen</label>
+                    <input data-k="weideBoards" inputmode="numeric" value="${s.weideBoards||""}" placeholder="0" />
+                  </div>
+                  <div class="hint" style="grid-column: span 2; display:flex; align-items:flex-end;">
+                    Bretter werden als Laufmeter gerechnet (wie Litzen), ohne Isolatoren.
+                  </div>
+                </div>
+                <div class="jsWeideCalc hint" style="margin-top:8px;"></div>
+              </div>
+            </div>
+
           </div>
 
           <div class="row" style="margin-top:10px; gap:8px;">
@@ -2678,21 +3408,108 @@ function refreshCustomerUI(){
           }
           selH.value=String(s.height||160);
         }
-        // system select
+        // system + color selects
         const selS = det.querySelector('select[data-k="system"]');
-        if(selS) selS.value = String(s.system||"Doppelstab");
+        if(selS) selS.value = normSystem(s.system||"Doppelstab");
+
+        const selC = det.querySelector('select[data-k="color"]');
+        if(selC){
+          const sysNow = selS ? String(selS.value||"Doppelstab") : normSystem(s.system||"Doppelstab");
+          fillSelect(selC, colorsForSystem(sysNow), null);
+          ensureOption(selC, s.color, "(eigene)");
+          selC.value = String(s.color||"Anthrazit (RAL 7016)");
+
+          
+          setElectroExtrasVisible(det, sysNow, s.height||160);
+          setWeideExtrasVisible(det, sysNow);
+
+// Wenn System geändert wird, Farboptionen passend aktualisieren
+          if(selS && !selS.dataset.boundColors){
+            selS.dataset.boundColors = "1";
+            selS.addEventListener("change", ()=>{
+              const keep = String(selC.value||"").trim();
+              const sys = String(selS.value||"Doppelstab");
+              fillSelect(selC, colorsForSystem(sys), null);
+              // versuche bisherigen Wert zu behalten
+              if(keep && Array.from(selC.options).some(o=>o.value===keep)){
+                selC.value = keep;
+              } else {
+                // fallback
+                const d = colorsForSystem(sys)[0] || "Anthrazit (RAL 7016)";
+                selC.value = d;
+              }
+              setElectroExtrasVisible(det, sys, Number(det.querySelector('select[data-k="height"]').value||160));
+              setWeideExtrasVisible(det, sys);
+
+            });
+          }
+        }
         const selP = det.querySelector('select[data-k="privacy"]');
         if(selP) selP.value = String(s.privacy||"no");
+
+        // Elektrozaun Selects initial setzen (sonst bleiben Defaults hängen)
+        const elLR = det.querySelector('select[data-k="electroLitzeRoll"]');
+        if(elLR) elLR.value = String(s.electroLitzeRoll || "400");
+        const elDR = det.querySelector('select[data-k="electroDrahtRoll"]');
+        if(elDR) elDR.value = String(s.electroDrahtRoll || "625");
+        const elBR = det.querySelector('select[data-k="electroBandRoll"]');
+        if(elBR) elBR.value = String(s.electroBandRoll || "200");
+        const elPreset = det.querySelector('select[data-k="electroPreset"]');
+        if(elPreset) elPreset.value = String(s.electroPreset||"");
+        try{ updateElectroCalc(det); }catch(_){ }
+
+
+        // Weidezaun (Holz) Selects initial setzen
+        const wCB = det.querySelector('input[data-k="woodIsWeide"]');
+        if(wCB) wCB.checked = !!s.woodIsWeide;
+
+        const wLR = det.querySelector('select[data-k="weideLitzeRoll"]');
+        if(wLR) wLR.value = String(s.weideLitzeRoll || "400");
+        const wDR = det.querySelector('select[data-k="weideDrahtRoll"]');
+        if(wDR) wDR.value = String(s.weideDrahtRoll || "625");
+        const wBR = det.querySelector('select[data-k="weideBandRoll"]');
+        if(wBR) wBR.value = String(s.weideBandRoll || "200");
+        const wPreset = det.querySelector('select[data-k="weidePreset"]');
+        if(wPreset) wPreset.value = String(s.weidePreset||"");
+        try{ updateWeideCalc(det); }catch(_){ }
 
         const commit = ()=>{
           s.length = (det.querySelector('input[data-k="len"]').value||"").trim();
           s.height = Number(det.querySelector('select[data-k="height"]').value||160);
-          s.system = String(det.querySelector('select[data-k="system"]').value||"Doppelstab");
-          s.color = (det.querySelector('input[data-k="color"]').value||"").trim() || "Anthrazit (RAL 7016)";
+          s.system = normSystem(det.querySelector('select[data-k="system"]').value||"Doppelstab");
+          s.color = String(det.querySelector('select[data-k="color"]').value||"").trim() || "Anthrazit (RAL 7016)";
           s.privacy = String(det.querySelector('select[data-k="privacy"]').value||"no");
-          s.corners = clampInt((det.querySelector('input[data-k="corners"]')?.value||0), 0, 999);
 
-          // legacy fallback: total length and default fields from first segment
+          
+          s.corners = clampInt(det.querySelector('input[data-k="corners"]').value||0,0,999);
+          // Elektrozaun Extras (optional)
+          s.electroSpacing = (det.querySelector('input[data-k="electroSpacing"]') ? String(det.querySelector('input[data-k="electroSpacing"]').value||"").trim() : (s.electroSpacing||""));
+          s.electroExtraPct = (det.querySelector('input[data-k="electroExtraPct"]') ? String(det.querySelector('input[data-k="electroExtraPct"]').value||"").trim() : (s.electroExtraPct||""));
+          s.electroLitze = (det.querySelector('input[data-k="electroLitze"]') ? String(det.querySelector('input[data-k="electroLitze"]').value||"").trim() : (s.electroLitze||""));
+          s.electroDraht = (det.querySelector('input[data-k="electroDraht"]') ? String(det.querySelector('input[data-k="electroDraht"]').value||"").trim() : (s.electroDraht||""));
+          s.electroBand = (det.querySelector('input[data-k="electroBand"]') ? String(det.querySelector('input[data-k="electroBand"]').value||"").trim() : (s.electroBand||""));
+          s.electroPreset = (det.querySelector('select[data-k="electroPreset"]') ? String(det.querySelector('select[data-k="electroPreset"]').value||"").trim() : (s.electroPreset||""));
+          s.electroLitzeRoll = (det.querySelector('select[data-k="electroLitzeRoll"]') ? String(det.querySelector('select[data-k="electroLitzeRoll"]').value||"").trim() : (s.electroLitzeRoll||""));
+          s.electroDrahtRoll = (det.querySelector('select[data-k="electroDrahtRoll"]') ? String(det.querySelector('select[data-k="electroDrahtRoll"]').value||"").trim() : (s.electroDrahtRoll||""));
+          s.electroBandRoll = (det.querySelector('select[data-k="electroBandRoll"]') ? String(det.querySelector('select[data-k="electroBandRoll"]').value||"").trim() : (s.electroBandRoll||""));
+          try{ updateElectroCalc(det); }catch(_){ }
+
+          // Weidezaun (Holz) Extras
+          s.woodIsWeide = !!(det.querySelector('input[data-k="woodIsWeide"]') && det.querySelector('input[data-k="woodIsWeide"]').checked);
+          s.weideWood = (det.querySelector('input[data-k="weideWood"]') ? String(det.querySelector('input[data-k="weideWood"]').value||"").trim() : (s.weideWood||""));
+          s.weidePostLen = (det.querySelector('input[data-k="weidePostLen"]') ? String(det.querySelector('input[data-k="weidePostLen"]').value||"").trim() : (s.weidePostLen||""));
+          s.weideSpacing = (det.querySelector('input[data-k="weideSpacing"]') ? String(det.querySelector('input[data-k="weideSpacing"]').value||"").trim() : (s.weideSpacing||""));
+          s.weideExtraPct = (det.querySelector('input[data-k="weideExtraPct"]') ? String(det.querySelector('input[data-k="weideExtraPct"]').value||"").trim() : (s.weideExtraPct||""));
+          s.weideLitze = (det.querySelector('input[data-k="weideLitze"]') ? String(det.querySelector('input[data-k="weideLitze"]').value||"").trim() : (s.weideLitze||""));
+          s.weideDraht = (det.querySelector('input[data-k="weideDraht"]') ? String(det.querySelector('input[data-k="weideDraht"]').value||"").trim() : (s.weideDraht||""));
+          s.weideBand = (det.querySelector('input[data-k="weideBand"]') ? String(det.querySelector('input[data-k="weideBand"]').value||"").trim() : (s.weideBand||""));
+          s.weideBoards = (det.querySelector('input[data-k="weideBoards"]') ? String(det.querySelector('input[data-k="weideBoards"]').value||"").trim() : (s.weideBoards||""));
+          s.weidePreset = (det.querySelector('select[data-k="weidePreset"]') ? String(det.querySelector('select[data-k="weidePreset"]').value||"").trim() : (s.weidePreset||""));
+          s.weideLitzeRoll = (det.querySelector('select[data-k="weideLitzeRoll"]') ? String(det.querySelector('select[data-k="weideLitzeRoll"]').value||"").trim() : (s.weideLitzeRoll||""));
+          s.weideDrahtRoll = (det.querySelector('select[data-k="weideDrahtRoll"]') ? String(det.querySelector('select[data-k="weideDrahtRoll"]').value||"").trim() : (s.weideDrahtRoll||""));
+          s.weideBandRoll = (det.querySelector('select[data-k="weideBandRoll"]') ? String(det.querySelector('select[data-k="weideBandRoll"]').value||"").trim() : (s.weideBandRoll||""));
+          try{ updateWeideCalc(det); }catch(_){ }
+// legacy fallback: total length and default fields from first segment
           p.customer.length = String(totalLengthFromSegments() || "");
           const a = p.customer.segments[0] || s;
           p.customer.height = a.height || p.customer.height;
@@ -2705,24 +3522,36 @@ function refreshCustomerUI(){
           try{ refreshAll(); }catch(e){}
         };
 
-        
-        det.querySelectorAll("input,select").forEach(elm=>{
-          const dk = (elm.dataset && elm.dataset.k) ? elm.dataset.k : "";
-          // Mobile Fix: kein Re-Render bei jedem Tastendruck, sonst verliert das Feld den Fokus
-          if(elm.tagName==="INPUT" && (dk==="length" || dk==="corners")){
-            elm.addEventListener("input", ()=>{
-              const s = segs[idx]; if(!s) return;
-              if(dk==="length") s.length = toNum(elm.value, 0);
-              if(dk==="corners") s.corners = clampInt(elm.value, 0, 999);
-              save();
-              try{ updateAddrBar(); }catch(e){}
-            });
-            elm.addEventListener("change", commit);
-            elm.addEventListener("blur", commit);
-          } else {
-            elm.addEventListener("change", commit);
-            elm.addEventListener("blur", commit);
-          }
+                const presetSel = det.querySelector('select[data-k="electroPreset"]');
+        if(presetSel){
+          presetSel.addEventListener("change", (ev)=>{
+            try{ ev.stopImmediatePropagation(); }catch(_){}
+            applyElectroPreset(det, String(presetSel.value||""));
+            // commit once with new values
+            commit();
+          });
+        }
+
+        const weidePresetSel = det.querySelector('select[data-k="weidePreset"]');
+        if(weidePresetSel){
+          weidePresetSel.addEventListener("change", (ev)=>{
+            try{ ev.stopImmediatePropagation(); }catch(_){}
+            applyWeidePreset(det, String(weidePresetSel.value||""));
+            commit();
+          });
+        }
+        const weideCb = det.querySelector('input[data-k="woodIsWeide"]');
+        if(weideCb){
+          weideCb.addEventListener("change", ()=>{
+            const sysNow = det.querySelector('select[data-k="system"]') ? String(det.querySelector('select[data-k="system"]').value||"") : "";
+            setWeideExtrasVisible(det, sysNow);
+            commit();
+          });
+        }
+
+det.querySelectorAll("input,select").forEach(elm=>{
+          elm.addEventListener("change", commit);
+          elm.addEventListener("input", ()=>{ save(); updateAddrBar(); });
         });
 
         const btnDel = det.querySelector('button[data-act="del"]');
@@ -2772,9 +3601,11 @@ function refreshCustomerUI(){
         label,
         length:"",
         height: base.height || 160,
-        system: base.system || "Doppelstab",
-        color: base.color || "Anthrazit (RAL 7016)",
-        privacy: base.privacy || "no"
+        system: normSystem(base.system || "Doppelstab"),
+        color: base.color || (colorsForSystem(base.system || "Doppelstab")[0] || "Anthrazit (RAL 7016)"),
+        privacy: base.privacy || "no",
+        electroWood: base.electroWood || "",
+        electroPostLen: base.electroPostLen || ""
       });
       save();
       renderSegments();
@@ -2895,5 +3726,6 @@ function refreshCustomerUI(){
       loadDemo();
     }
   });
+})();
 
 if(typeof btnUpdate!=="undefined" && btnUpdate){ btnUpdate.addEventListener("click", checkForUpdates); }
