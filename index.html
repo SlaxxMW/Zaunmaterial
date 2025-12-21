@@ -817,7 +817,7 @@
     <option value="200"></option>
   </datalist>
 
-  <script src="./app.js?v=1.4.41" defer></script>
+  <script src="./app.js?v=1.4.41b" defer></script>
 <!-- PWA Service Worker (Auto-Update) -->
   <script>
     if ("serviceWorker" in navigator) {
@@ -837,12 +837,12 @@
           const regs = await navigator.serviceWorker.getRegistrations();
           for (const r of regs) {
             const u = (r && r.active && r.active.scriptURL) ? r.active.scriptURL : "";
-            if (u.includes("sw.js?v=") && !u.includes("sw.js?v=1.4.41")) {
+            if (u.includes("sw.js?v=") && !u.includes("sw.js?v=1.4.41b")) {
               await r.unregister();
             }
           }
         } catch(_) {}
-        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.41", { updateViaCache: "none" });
+        reg = await navigator.serviceWorker.register("./sw.js?v=1.4.41b", { updateViaCache: "none" });
 
         // Immer nach Updates suchen
         const doUpdate = () => reg && reg.update().catch(()=>{});

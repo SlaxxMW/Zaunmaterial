@@ -234,13 +234,13 @@ function setElectroExtrasVisible(det, sys, height){
     }
   }
 
-  // Weidezaun (Holz) nutzt dieselben Preset-Werte wie Elektrozaun (Strang-Anzahl/Abstand/Reserve)
-  const WEIDE_PRESETS = ELECTRO_PRESETS;
-
   function applyWeidePreset(det, key){
     try{
       if(!det || !key) return;
-      const p = WEIDE_PRESETS[key];
+      // NOTE: ELECTRO_PRESETS wird weiter unten definiert.
+      // Wichtig: NICHT als const WEIDE_PRESETS = ELECTRO_PRESETS aliasen,
+      // sonst gibt es in Safari/iOS eine TDZ-ReferenceError beim Initialisieren.
+      const p = ELECTRO_PRESETS[key];
       if(!p) return;
 
       const setVal = (sel, v) => { if(sel){ sel.value = String(v); } };
@@ -422,7 +422,7 @@ function setElectroExtrasVisible(det, sys, height){
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-    const APP_VERSION = "1.4.41";
+    const APP_VERSION = "1.4.41b";
   const APP_BUILD = "2025-12-21";
 let state = { version:"1.4.33", selectedProjectId:null, projects:[], meta:{ lastSavedAt:"", lastBackupAt:"" } };
 
