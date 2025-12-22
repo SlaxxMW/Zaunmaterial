@@ -238,29 +238,97 @@ let gateUiIdx=0; let gateCollapsed=false;
   const ALU_BRANDS = {
     valu: {
       label: "VALU",
-      lamellen: ["Lamellenprofil", "Blockhaus", "Rhombus", "Nut-&-Feder", "Bohlen"],
-      pfosten: ["Alu-Pfosten (Standard)", "Alu-Pfosten zum Einbetonieren", "Alu-Pfosten zum Aufschrauben"],
-      farben: ["Anthrazit (RAL 7016)", "Silber (RAL 9006)", "Weiß (RAL 9016)"]
+      // Quelle: VALU Alu-Sichtschutz (Profile: Blockhaus, Konkav, Duo; Primus 140×20 u.a.)
+      lamellen: [
+        "Blockhaus 140×20",
+        "Konkav 140×20",
+        "Lamellenprofil Duo 154×20",
+        "Profil Primus 140×20",
+        "Lamellenprofil (Standard)"
+      ],
+      pfosten: [
+        "Alu-Pfosten (zum Einbetonieren)",
+        "Alu-Pfosten (zum Aufschrauben)",
+        "Eck-/Endpfosten (System)"
+      ],
+      farben: [
+        "Anthrazit (z.B. RAL 7016 FS)",
+        "Silber / Weißaluminium (z.B. RAL 9006 FS)",
+        "Weiß (z.B. RAL 9016/9010)",
+        "Wunsch-RAL / Sonderfarbe"
+      ]
     },
+
     traumgarten: {
       label: "Traumgarten",
-      lamellen: ["SYSTEM ALU (Classic)", "SYSTEM ALU XL", "SYSTEM RHOMBUS", "SYSTEM BOARD"],
-      pfosten: ["SYSTEM Alu-Pfosten (einbetonieren)", "SYSTEM Alu-Pfosten (aufdübeln)", "SYSTEM Torpfosten"],
-      farben: ["Anthrazit", "Silber", "Weiß"]
+      // Quelle: Traumgarten Katalog „Pflegeleichte Zaunsysteme“ (SYSTEM ALU XL, 6 Farben)
+      lamellen: [
+        "SYSTEM ALU XL Steckprofil 30×2 (ausgeschäumt)",
+        "Dekorprofil (z.B. Omega)"
+      ],
+      pfosten: [
+        "Klemmpfosten",
+        "Eck-Klemmpfosten",
+        "Torpfosten"
+      ],
+      farben: [
+        "Anthrazit",
+        "Silber",
+        "Weiß (Grundfarbton für Sonderfarbe)",
+        "Lärche (Naturoptik)",
+        "Bambus (Naturoptik)",
+        "Vintage Oak (Naturoptik)",
+        "Sonderfarbe (auf Basis Weiß)"
+      ]
     },
+
     brix: {
       label: "Brix",
-      lamellen: ["Privée 130 (Nut-Feder)", "Lamello", "Blocco", "Decco"],
-      pfosten: ["Brix Alu-Pfosten (Standard)", "Brix Alu-Pfosten (einbetonieren)", "Brix Alu-Pfosten (aufdübeln)"],
-      farben: ["Anthrazit (RAL 7016)", "Moosgrün (RAL 6005)", "Silbergrau (ähnl. RAL 9006)", "Weiß (RAL 9016)", "Holzdekor (div.)", "Weitere RAL (auf Anfrage)"]
+      // Quelle: Brix Lamello (Blocco/Decco/130) + Standardfarben/RAL/Holzdekor
+      lamellen: [
+        "Lamello Blocco (blickdicht, ohne Abstand)",
+        "Lamello Decco (mit Abstand)",
+        "Lamello 130 (blickdicht, leichter)"
+      ],
+      pfosten: [
+        "Brix Pfosten (zum Einbetonieren)",
+        "Brix Pfosten (zum Aufdübeln)",
+        "Brix Torpfosten"
+      ],
+      farben: [
+        "Brix Anthrazit-Metallic",
+        "RAL 7016 Anthrazitgrau",
+        "RAL 9006 Weißaluminium",
+        "RAL 8017 Schokoladebraun",
+        "RAL 6005 Moosgrün",
+        "RAL 9010 Reinweiß",
+        "RAL K7 Sonderfarbe",
+        "DB-/Strukturfarbe",
+        "Holzdekor"
+      ]
     },
+
     baumann: {
       label: "Baumann",
-      lamellen: ["Alu-Sichtschutz (Maß)", "Alu-Zaun (Maß)", "Alu/Kunststoff-Kombi"],
-      pfosten: ["Baumann Alu-Pfosten (Standard)", "Baumann Alu-Pfosten (einbetonieren)", "Baumann Alu-Pfosten (aufdübeln)"],
-      farben: ["Grün (RAL 6005)", "Anthrazit (RAL 7016)", "Weitere Farben (auf Anfrage)"]
+      // Quelle: Baumann (Alu/Kunststoff auf Maß, Alu in jeder Farbe beschichtbar)
+      lamellen: [
+        "Alu-Sichtschutz (Maßanfertigung)",
+        "Alu-Zaun (Maßanfertigung)",
+        "Alu + Kunststoff kombiniert"
+      ],
+      pfosten: [
+        "Alu-Pfosten (zum Einbetonieren)",
+        "Alu-Pfosten (zum Aufschrauben)",
+        "Torpfosten"
+      ],
+      farben: [
+        "Wunschfarbe (RAL/DB – Pulverbeschichtung)",
+        "Sonderfarbe / Struktur",
+        "Holzimitation (bei Kunststoff-Kombi)"
+      ]
     }
   };
+
 
   const aluBrandKey = (v)=>{
     const s = String(v||"").toLowerCase();
@@ -272,10 +340,61 @@ let gateUiIdx=0; let gateCollapsed=false;
     return "valu";
   };
 
+  function uniqStr(arr){
+    const out = [];
+    const seen = new Set();
+    (arr||[]).forEach(v=>{
+      const s = String(v||"").trim();
+      if(!s) return;
+      const k = s.toLowerCase();
+      if(seen.has(k)) return;
+      seen.add(k);
+      out.push(s);
+    });
+    return out;
+  }
+
+  function getAluCustomColors(brand){
+    try{
+      const b = aluBrandKey(brand);
+      const cc = (state && state.settings && state.settings.aluCustomColors) ? state.settings.aluCustomColors : null;
+      const arr = cc && Array.isArray(cc[b]) ? cc[b] : [];
+      return uniqStr(arr);
+    }catch(_){ return []; }
+  }
+
+  function addAluCustomColor(brand, value){
+    const b = aluBrandKey(brand);
+    const v = String(value||"").trim();
+    if(!v) return false;
+    if(!state.settings) state.settings = {...DEFAULT_SETTINGS};
+    if(!state.settings.aluCustomColors) state.settings.aluCustomColors = { valu:[], traumgarten:[], brix:[], baumann:[] };
+    if(!Array.isArray(state.settings.aluCustomColors[b])) state.settings.aluCustomColors[b] = [];
+    const arr = state.settings.aluCustomColors[b];
+    const exists = arr.some(x=>String(x||"").trim().toLowerCase() === v.toLowerCase());
+    if(!exists) arr.push(v);
+    // leicht aufräumen (max 40 pro Hersteller)
+    state.settings.aluCustomColors[b] = uniqStr(arr).slice(-40);
+    save();
+    return true;
+  }
+
+  function getAluColors(brand){
+    const b = aluBrandKey(brand);
+    const base = (ALU_BRANDS[b] && Array.isArray(ALU_BRANDS[b].farben)) ? ALU_BRANDS[b].farben : [];
+    const custom = getAluCustomColors(b);
+    return uniqStr([ ...base, ...custom, "(eigene Eingabe…)" ]);
+  }
+
+
   function setAluExtrasVisible(det, sys){
     if(!det) return;
     const show = (normSystem(sys)==="Aluminium");
     det.querySelectorAll('.jsAluOnly').forEach(el=>{ el.style.display = show ? '' : 'none'; });
+    const addBtn = det.querySelector('button[data-act="addAluColor"]');
+    const hint = det.querySelector('.jsAluColorHint');
+    if(addBtn) addBtn.style.display = show ? '' : 'none';
+    if(hint) hint.style.display = show ? '' : 'none';
     if(!show) return;
 
     const brandSel = det.querySelector('select[data-k="aluBrand"]');
@@ -300,10 +419,10 @@ let gateUiIdx=0; let gateCollapsed=false;
 
     if(colorSel){
       const keep = String(colorSel.value||"").trim();
-      fillSelect(colorSel, cfg.farben, null);
+      fillSelect(colorSel, getAluColors(brand), null);
       ensureOption(colorSel, keep, "(eigene)");
       if(keep && Array.from(colorSel.options).some(o=>o.value===keep)) colorSel.value = keep;
-      else colorSel.value = cfg.farben[0] || keep || "Anthrazit (RAL 7016)";
+      else colorSel.value = (ALU_BRANDS[brand]?.farben?.[0] || keep || "Anthrazit");
     }
   }
 
@@ -607,7 +726,7 @@ function escapeHtml(s) {
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-  const APP_VERSION = "1.4.47";
+  const APP_VERSION = "1.4.48";
   const APP_BUILD = "2025-12-22";
   const APP_NAME = "Zaunteam Zaunplaner";
 
@@ -644,7 +763,8 @@ function escapeHtml(s) {
     shareOnExport: true,
     supportEmail: "",
     // vorbereitet (ohne Zwang)
-    reminderPrep: false
+    reminderPrep: false,
+    aluCustomColors: { valu:[], traumgarten:[], brix:[], baumann:[] }
   };
 
   // Globaler State
@@ -4254,7 +4374,11 @@ function refreshCustomerUI(){
             </div>
             <div style="grid-column: span 2;">
               <label>Farbe</label>
-              <select data-k="color"></select>
+              <div class="row" style="gap:8px; align-items:center;">
+                <select data-k="color" style="flex:1;"></select>
+                <button type="button" class="btn" data-act="addAluColor" style="padding:6px 10px; display:none;">+ Farbe</button>
+              </div>
+              <div class="hint jsAluColorHint" style="display:none; margin-top:4px;">Für Aluminium: Hersteller-Farben + eigene Farbe möglich.</div>
             </div>
 
 
@@ -4704,6 +4828,48 @@ function refreshCustomerUI(){
             try{ setAluExtrasVisible(det, sysNow); }catch(_){ }
             commit();
           });
+        }
+
+
+        // Aluminium: "+ Farbe" Button (speichert pro Hersteller) + "(eigene Eingabe…)" Option
+        const btnAddAluColor = det.querySelector('button[data-act="addAluColor"]');
+        if(btnAddAluColor && !btnAddAluColor.dataset.bound){
+          btnAddAluColor.dataset.bound="1";
+          btnAddAluColor.addEventListener("click", (ev)=>{
+            try{ ev.stopImmediatePropagation(); }catch(_){}
+            const sysNow = det.querySelector('select[data-k="system"]') ? String(det.querySelector('select[data-k="system"]').value||"") : "";
+            if(normSystem(sysNow)!=="Aluminium") return;
+            const brand = aluBrandKey(det.querySelector('select[data-k="aluBrand"]')?.value || "valu");
+            const v = prompt('Eigene Farbe hinzufügen (z.B. "RAL 7016 Anthrazit matt" oder "DB 703")');
+            if(!v || !String(v).trim()) return;
+            addAluCustomColor(brand, String(v).trim());
+            try{ setAluExtrasVisible(det, sysNow); }catch(_){}
+            const cs = det.querySelector('select[data-k="color"]');
+            if(cs) cs.value = String(v).trim();
+            commit();
+          });
+        }
+
+        const colorSel = det.querySelector('select[data-k="color"]');
+        if(colorSel && !colorSel.dataset.aluBound){
+          colorSel.dataset.aluBound="1";
+          colorSel.addEventListener("change", (ev)=>{
+            const sysNow = det.querySelector('select[data-k="system"]') ? String(det.querySelector('select[data-k="system"]').value||"") : "";
+            if(normSystem(sysNow)!=="Aluminium") return;
+            if(String(colorSel.value||"") !== "(eigene Eingabe…)" ) return;
+            try{ ev.stopImmediatePropagation(); }catch(_){}
+            const brand = aluBrandKey(det.querySelector('select[data-k="aluBrand"]')?.value || "valu");
+            const v = prompt('Eigene Farbe eingeben (z.B. "RAL 7016 Anthrazit matt" oder "DB 703")');
+            if(!v || !String(v).trim()){
+              // zurück auf Hersteller-Farbe
+              try{ setAluExtrasVisible(det, sysNow); }catch(_){}
+              return;
+            }
+            addAluCustomColor(brand, String(v).trim());
+            try{ setAluExtrasVisible(det, sysNow); }catch(_){}
+            colorSel.value = String(v).trim();
+            commit();
+          }, true);
         }
 
         const electroTypeSel = det.querySelector('select[data-k="electroType"]');
