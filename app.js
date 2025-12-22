@@ -532,7 +532,7 @@ function escapeHtml(s) {
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-  const APP_VERSION = "1.4.44";
+  const APP_VERSION = "1.4.45";
   const APP_BUILD = "2025-12-22";
   const APP_NAME = "Zaunteam Zaunplaner";
 
@@ -580,6 +580,8 @@ function escapeHtml(s) {
     settings: {...DEFAULT_SETTINGS},
     meta: { lastSavedAt:"", lastBackupAt:"", logs:[] }
   };
+
+  let BOOT_DONE = false;
 
   /******************************************************************
    * Lokales Logging (nur lokal, keine Analytics)
@@ -775,6 +777,11 @@ async function cacheGet(){
   function save(){
     try{ flushEarlyLogs(); }catch(_){ }
 
+
+    if(!BOOT_DONE){
+      // Wichtig: niemals vor dem initialen Storage-Load schreiben (sonst werden Daten überschrieben).
+      return;
+    }
     // Defaults sicherstellen
     if(!state.settings) state.settings = {...DEFAULT_SETTINGS};
     else state.settings = {...DEFAULT_SETTINGS, ...(state.settings||{})};
@@ -1110,7 +1117,7 @@ function currentProject() {
     state.selectedProjectId = null;
     const ps = el("projSel");
     if(ps) ps.value="";
-    save(); refreshHeader();
+    refreshHeader();
   }
   function showCustomerEdit(){
     const lv=el("kundenListView"), ev=el("kundenEditView");
@@ -1121,8 +1128,7 @@ function currentProject() {
 
 
   document.querySelectorAll(".tabBtn").forEach(b=>b.addEventListener("click", ()=> setTab(b.dataset.tab)));
-  setTab("kunde");
-  showCustomerList();
+  // Initiale Ansicht wird nach Storage-Load in init() gesetzt (verhindert frühe Nebenwirkungen)
 
   // Fill
   function fillHeights(sel, heights=DEFAULT_HEIGHTS) {
@@ -4633,6 +4639,8 @@ try{ cacheSet(JSON.stringify(state)); }catch(_){}
 
     await migrateLegacy();
 
+    BOOT_DONE = true;
+
     // Storage Persist (best-effort) + Storage Estimate
     try{ PERSIST_INFO = await requestPersistentStorage(); }catch(_){ }
     try{ if(navigator.storage && navigator.storage.estimate) STORAGE_EST = await navigator.storage.estimate(); }catch(_){ }
@@ -4641,6 +4649,7 @@ try{ cacheSet(JSON.stringify(state)); }catch(_){}
     state.version = APP_VERSION;
 
     // Final safety: falls localStorage leer ist, aber IDB Daten hat (ohne Überschreiben)
+    try{ setTab('kunde'); }catch(_){}
     try{ await restoreFromIndexedDBIfNeeded(); }catch(_){}
 
     refreshAll();
