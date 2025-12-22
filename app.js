@@ -726,7 +726,7 @@ function escapeHtml(s) {
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-  const APP_VERSION = "1.4.48";
+  const APP_VERSION = "1.4.49";
   const APP_BUILD = "2025-12-22";
   const APP_NAME = "Zaunteam Zaunplaner";
 
@@ -4720,7 +4720,10 @@ function refreshCustomerUI(){
 
 
 
-          // Aluminium Hersteller (nur wenn System=Aluminium)
+          
+
+          const sysN = normSystem(s.system);
+// Aluminium Hersteller (nur wenn System=Aluminium)
           if(sysN==="Aluminium"){
             const bSel = det.querySelector('select[data-k="aluBrand"]');
             const lSel = det.querySelector('select[data-k="aluLamella"]');
@@ -4730,7 +4733,6 @@ function refreshCustomerUI(){
             s.aluPost = pSel ? String(pSel.value||"").trim() : (s.aluPost||"");
           }
           // Holz/Weide Auswahl (nur wenn System=Holz)
-          const sysN = normSystem(s.system);
           if(sysN==="Holz"){
             const wcEl = det.querySelector('select[data-k="woodClass"]');
             const wbEl = det.querySelector('select[data-k="woodBuild"]');
