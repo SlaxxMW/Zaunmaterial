@@ -532,7 +532,7 @@ function escapeHtml(s) {
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-  const APP_VERSION = "1.4.42";
+  const APP_VERSION = "1.4.43";
   const APP_BUILD = "2025-12-22";
   const APP_NAME = "Zaunteam Zaunplaner";
 
@@ -674,6 +674,36 @@ function escapeHtml(s) {
     }
   }
 
+  
+// CacheStorage Mirror (3. Backup-Schicht)
+// Hinweis: iOS kann einzelne Storage-Arten löschen; wir spiegeln daher zusätzlich in Cache Storage.
+const STATE_CACHE_NAME = "zaunplaner-state-cache-v1";
+const STATE_CACHE_KEY = "/__zp_state__.json";
+
+async function cacheSet(value){
+  try{
+    if(!("caches" in window)) return false;
+    const c = await caches.open(STATE_CACHE_NAME);
+    const res = new Response(value, {headers: {"Content-Type":"application/json; charset=utf-8"}});
+    await c.put(STATE_CACHE_KEY, res);
+    return true;
+  }catch(e){
+    return false;
+  }
+}
+
+async function cacheGet(){
+  try{
+    if(!("caches" in window)) return null;
+    const c = await caches.open(STATE_CACHE_NAME);
+    const res = await c.match(STATE_CACHE_KEY);
+    if(!res) return null;
+    return await res.text();
+  }catch(e){
+    return null;
+  }
+}
+
   function warnStorageOnce(){
     if(STORAGE_WARNED) return;
     STORAGE_WARNED = true;
@@ -760,102 +790,168 @@ function escapeHtml(s) {
 
     // IndexedDB mirror (robust gegen iOS localStorage-Glitches)
     try{ idbSet("state", payload); }catch(_){ }
+    try{ cacheSet(payload); }catch(_){ }
 
     updateStatusPill();
     try{ renderProjectOverview(); }catch(_){ }
   }
 
-  function migrateLegacy() {
-    let stable = null;
-    try{ stable = localStorage.getItem(STORAGE_KEY); }catch(e){ STORAGE_OK = false; warnStorageOnce(); stable = null; }
-    if(stable) {
-      try {
-        const s = JSON.parse(stable);
-        if(s && Array.isArray(s.projects)) {
-          state = {...state, ...s, version:APP_VERSION};
-          state.settings = {...DEFAULT_SETTINGS, ...(s.settings||{})};
-          if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"", logs:[] };
-          if(!Array.isArray(state.meta.logs)) state.meta.logs=[];
-          return;
-        }
-      } catch(e){}
-    }
-    
-    // Recovery: wenn durch Bug/Crash leer gespeichert wurde, versuche "lastgood" wiederherzustellen
-    try{
-      const lg = (()=>{ try{ return localStorage.getItem(STORAGE_KEY+"_lastgood"); }catch(e){ return null; }})();
-      if(lg){
-        const s2 = JSON.parse(lg);
-        if(s2 && Array.isArray(s2.projects) && s2.projects.length && (!state.projects || !state.projects.length)){
-          state = {...state, ...s2, version:APP_VERSION};
-          state.settings = {...DEFAULT_SETTINGS, ...(s2.settings||state.settings||{})};
-          if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"", logs:[] };
-          if(!Array.isArray(state.meta.logs)) state.meta.logs=[];
-          // nicht sofort überschreiben – nur anzeigen
-          setTimeout(()=>{ try{ toast("✅ Kunden wiederhergestellt (Backup)"); }catch(e){} }, 50);
-          return;
-        }
+  
+async function migrateLegacy() {
+  // 1) Primär: localStorage
+  let stable = null;
+  try{ stable = localStorage.getItem(STORAGE_KEY); }catch(e){ STORAGE_OK = false; warnStorageOnce(); stable = null; }
+  if(stable) {
+    try {
+      const s = JSON.parse(stable);
+      if(s && Array.isArray(s.projects)) {
+        state = {...state, ...s, version:APP_VERSION};
+        state.settings = {...DEFAULT_SETTINGS, ...(s.settings||{})};
+        if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"", logs:[] };
+        if(!Array.isArray(state.meta.logs)) state.meta.logs=[];
+        return;
       }
-    }catch(e){}
-    for(const k of LEGACY_KEYS) {
-      const raw = (()=>{ try{ return localStorage.getItem(k); }catch(e){ return null; }})();
-      if(!raw) continue;
-      try {
-        const s = JSON.parse(raw);
-        if(Array.isArray(s.projects) && s.projects.length) {
-          const converted = s.projects.map(p => {
-            const np = blankProject(p.title || p.name || "Projekt");
-            np.id = p.id || np.id;
-            np.createdAt = p.createdAt || np.createdAt;
-            np.plannedDate = p.plannedDate || "";
-            np.phone = p.phone || "";
-            np.email = p.email || "";
-            np.addr = p.addr || "";
-            np.objAddr = p.objAddr || "";
-            if(p.plan) {
-              np.customer.length = p.plan.length || "";
-              np.customer.height = Number(p.plan.height) || 160;
-              np.customer.system = p.plan.system || "Doppelstab";
-              np.customer.color = p.plan.color || "Anthrazit (RAL 7016)";
-              np.customer.woodType = p.plan.woodType || "";
-              np.customer.slopeType = p.plan.slopeType || "flat";
-              np.customer.slopePct = p.plan.slopePct || "";
-              np.customer.corners = Number(p.plan.corners)||0;
-              np.customer.concreteMode = p.plan.concreteMode || "sacks";
-              np.customer.concreteValue = p.plan.concreteValue || "";
-            }
-            if(Array.isArray(p.items)) {
-              const banned = ["zinkspray","schnur","bodenhülsen","bodenhuelsen","markierungsspray","zink spray","pfosten","eckpfosten","endpfosten","matten","elemente","u-leisten","uleisten","torleisten","beton"];
-              np.chef.materials = p.items.filter(it => {
-                const n = String(it.name||"").toLowerCase();
-                return !banned.some(b=>n.includes(b));
-              }).map(it => ({
-                id: it.id || uid(),
-                name: it.name || "",
-                qty: toNum(it.qty, 0),
-                unit: it.unit || "Stk",
-                note: it.note || ""
-              }));
-            }
-            return np;
-          });
-          state.projects = converted;
-          state.selectedProjectId = (s.selectedProjectId && converted.some(p=>p.id===s.selectedProjectId)) ? s.selectedProjectId : ((converted[0] && converted[0].id) ? converted[0].id : null);
-          save();
-          toast("Daten übernommen", "aus älterer Version");
-          return;
-        }
-      } catch(e){}
-    }
-    const demo = blankProject("Demo – Kunde Beispiel");
-    demo.plannedDate = "2025-12-16";
-    state.projects = [demo];
-    state.selectedProjectId = demo.id;
-    // Wenn Storage blockiert ist, nicht sofort überschreiben.
-    if(STORAGE_OK) save();
+    } catch(e){}
   }
 
-  function currentProject() {
+  // 2) Fallback: IndexedDB Spiegel
+  try{
+    const txt = await idbGet("state");
+    if(txt){
+      let s=null;
+      try{ s = JSON.parse(txt); }catch(_){ s=null; }
+      if(s && Array.isArray(s.projects) && s.projects.length){
+        state = {...state, ...s, version:APP_VERSION};
+        state.settings = {...DEFAULT_SETTINGS, ...(s.settings||state.settings||{})};
+        if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"", logs:[] };
+        if(!Array.isArray(state.meta.logs)) state.meta.logs=[];
+        // zurück nach localStorage spiegeln (wenn möglich)
+        try{
+          localStorage.setItem(STORAGE_KEY, txt);
+          localStorage.setItem(STORAGE_KEY+"_lastgood", txt);
+        }catch(e){
+          STORAGE_OK = false;
+        }
+        try{ cacheSet(txt); }catch(_){}
+        try{ toast("✅ Kunden geladen", "IndexedDB"); }catch(_){}
+        return;
+      }
+    }
+  }catch(e){}
+
+  // 3) Fallback: CacheStorage Spiegel
+  try{
+    const cTxt = await cacheGet();
+    if(cTxt){
+      let s=null;
+      try{ s = JSON.parse(cTxt); }catch(_){ s=null; }
+      if(s && Array.isArray(s.projects) && s.projects.length){
+        state = {...state, ...s, version:APP_VERSION};
+        state.settings = {...DEFAULT_SETTINGS, ...(s.settings||state.settings||{})};
+        if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"", logs:[] };
+        if(!Array.isArray(state.meta.logs)) state.meta.logs=[];
+        try{
+          localStorage.setItem(STORAGE_KEY, cTxt);
+          localStorage.setItem(STORAGE_KEY+"_lastgood", cTxt);
+        }catch(e){
+          STORAGE_OK = false;
+        }
+        try{ idbSet("state", cTxt); }catch(_){}
+        try{ toast("✅ Kunden geladen", "Cache"); }catch(_){}
+        return;
+      }
+    }
+  }catch(e){}
+
+  // 4) Recovery: lastgood (nur wenn localStorage noch erreichbar ist)
+  try{
+    const lg = (()=>{ try{ return localStorage.getItem(STORAGE_KEY+"_lastgood"); }catch(e){ return null; }})();
+    if(lg){
+      const s2 = JSON.parse(lg);
+      if(s2 && Array.isArray(s2.projects) && s2.projects.length && (!state.projects || !state.projects.length)){
+        state = {...state, ...s2, version:APP_VERSION};
+        state.settings = {...DEFAULT_SETTINGS, ...(s2.settings||state.settings||{})};
+        if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"", logs:[] };
+        if(!Array.isArray(state.meta.logs)) state.meta.logs=[];
+        // nicht sofort überschreiben – nur anzeigen
+        setTimeout(()=>{ try{ toast("✅ Kunden wiederhergestellt (Backup)"); }catch(e){} }, 50);
+        return;
+      }
+    }
+  }catch(e){}
+
+  // 5) Legacy Keys
+  for(const k of LEGACY_KEYS) {
+    const raw = (()=>{ try{ return localStorage.getItem(k); }catch(e){ return null; }})();
+    if(!raw) continue;
+    try {
+      const s = JSON.parse(raw);
+      if(Array.isArray(s.projects) && s.projects.length) {
+        const converted = s.projects.map(p => {
+          const np = blankProject(p.title || p.name || "Projekt");
+          np.id = p.id || np.id;
+          np.createdAt = p.createdAt || np.createdAt;
+          np.plannedDate = p.plannedDate || "";
+          np.phone = p.phone || "";
+          np.email = p.email || "";
+          np.addr = p.addr || "";
+          np.objAddr = p.objAddr || "";
+          if(p.plan) {
+            np.customer.length = p.plan.length || "";
+            np.customer.height = Number(p.plan.height) || 160;
+            np.customer.system = p.plan.system || "Doppelstab";
+            np.customer.color = p.plan.color || "Anthrazit (RAL 7016)";
+            np.customer.woodType = p.plan.woodType || "";
+            np.customer.slopeType = p.plan.slopeType || "flat";
+            np.customer.slopePct = p.plan.slopePct || "";
+            np.customer.corners = Number(p.plan.corners)||0;
+            np.customer.concreteMode = p.plan.concreteMode || "sacks";
+            np.customer.concreteValue = p.plan.concreteValue || "";
+          }
+          if(Array.isArray(p.items)) {
+            const banned = ["zinkspray","schnur","bodenhülsen","bodenhuelsen","markierungsspray","zink spray","pfosten","eckpfosten","endpfosten","matten","elemente","u-leisten","uleisten","torleisten","beton"];
+            np.chef.materials = p.items.filter(it => {
+              const n = String(it.name||"").toLowerCase();
+              return !banned.some(b=>n.includes(b));
+            }).map(it => ({
+              id: it.id || uid(),
+              name: it.name || "",
+              qty: toNum(it.qty, 0),
+              unit: it.unit || "Stk",
+              note: it.note || ""
+            }));
+          }
+          return np;
+        });
+        state.projects = converted;
+        state.selectedProjectId = (s.selectedProjectId && converted.some(p=>p.id===s.selectedProjectId)) ? s.selectedProjectId : ((converted[0] && converted[0].id) ? converted[0].id : null);
+        save();
+        toast("Daten übernommen", "aus älterer Version");
+        return;
+      }
+    } catch(e){}
+  }
+
+  // 6) Demo als Fallback
+  const demo = blankProject("Demo – Kunde Beispiel");
+  demo.plannedDate = "2025-12-16";
+  state.projects = [demo];
+  state.selectedProjectId = demo.id;
+
+  // Wenn Storage blockiert ist, nicht aggressiv überschreiben.
+  // (Bei iOS kann localStorage beim Schließen verschwinden – daher trotzdem nach IDB/Cache spiegeln.)
+  try{
+    const payload = JSON.stringify(state);
+    if(STORAGE_OK){
+      try{ localStorage.setItem(STORAGE_KEY, payload); }catch(e){ STORAGE_OK=false; }
+    }
+    try{ idbSet("state", payload); }catch(_){}
+    try{ cacheSet(payload); }catch(_){}
+  }catch(_){}
+  if(STORAGE_OK) save();
+}
+
+function currentProject() {
     return state.projects.find(p=>p.id===state.selectedProjectId) || null;
   }
 
@@ -4426,6 +4522,17 @@ det.querySelectorAll("input,select").forEach(elm=>{
       if(!hasLocal || isDemoOnly){
         state = {...state, ...s, version: APP_VERSION};
         state.settings = {...DEFAULT_SETTINGS, ...(s.settings||state.settings||{})};
+
+// zurück nach localStorage spiegeln, damit nach App-Schließen nichts "weg" ist
+try{
+  const payload = JSON.stringify(state);
+  localStorage.setItem(STORAGE_KEY, payload);
+  localStorage.setItem(STORAGE_KEY+"_lastgood", payload);
+}catch(e){
+  STORAGE_OK = false;
+}
+try{ cacheSet(JSON.stringify(state)); }catch(_){}
+
         if(!state.meta) state.meta={ lastSavedAt:"", lastBackupAt:"", logs:[] };
         if(!Array.isArray(state.meta.logs)) state.meta.logs=[];
         if(state.selectedProjectId && !state.projects.find(p=>p.id===state.selectedProjectId)){
@@ -4437,19 +4544,36 @@ det.querySelectorAll("input,select").forEach(elm=>{
     }catch(e){}
   }
 
-  // init
-  fillHeights();
-  fillSelect(kColor, ZAUNTEAM_FARBEN, "Anthrazit (RAL 7016)");
-  fillSelect(kWood, HOLZARTEN, "—");
-  fillSelect(kWpc, WPC_VARIANTEN, "—");
-  updateConcretePlaceholder();
-  if(pCreated && !pCreated.value) pCreated.value = new Date().toISOString().slice(0,10);
-  migrateLegacy();
-  // Always keep version current
-  state.version = APP_VERSION;
-  refreshAll();
+  
+// init
+(async ()=>{
+  try{
+    fillHeights();
+    fillSelect(kColor, ZAUNTEAM_FARBEN, "Anthrazit (RAL 7016)");
+    fillSelect(kWood, HOLZARTEN, "—");
+    fillSelect(kWpc, WPC_VARIANTEN, "—");
+    updateConcretePlaceholder();
+    if(pCreated && !pCreated.value) pCreated.value = new Date().toISOString().slice(0,10);
 
-  /******************************************************************
+    await migrateLegacy();
+
+    // Always keep version current
+    state.version = APP_VERSION;
+
+    // Final safety: falls localStorage leer ist, aber IDB Daten hat (ohne Überschreiben)
+    try{ await restoreFromIndexedDBIfNeeded(); }catch(_){}
+
+    refreshAll();
+    try{ save(); }catch(_){ } // einmal sauber persistieren (write-through)
+  }catch(e){
+    try{
+      console.error("Init failed", e);
+      toast("❌ Startfehler", String((e && e.message) || e));
+    }catch(_){}
+  }
+})();
+
+/******************************************************************
    * Settings Tab – Buttons / Toggles
    ******************************************************************/
   const btnExportJSON = el("btnExportJSON");
