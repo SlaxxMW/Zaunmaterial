@@ -532,7 +532,7 @@ function escapeHtml(s) {
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-  const APP_VERSION = "1.4.45";
+  const APP_VERSION = "1.4.46";
   const APP_BUILD = "2025-12-22";
   const APP_NAME = "Zaunteam Zaunplaner";
 
@@ -1189,9 +1189,10 @@ function currentProject() {
       <th style="padding:10px;">Kunde</th>
       <th style="padding:10px;">Status</th>
       <th style="padding:10px; white-space:nowrap;">Std.</th>
+      <th style="padding:10px; width:1%; white-space:nowrap;"></th>
     </tr></thead><tbody>`;
     if(!list.length){
-      html += `<tr><td colspan="3" style="padding:12px; opacity:.8;">Keine Treffer</td></tr>`;
+      html += `<tr><td colspan="4" style="padding:12px; opacity:.8;">Keine Treffer</td></tr>`;
     } else {
       for(const p of list){
         const isActive = (p.id === state.selectedProjectId);
@@ -1199,6 +1200,9 @@ function currentProject() {
           <td style="padding:10px; border-top:1px solid rgba(255,255,255,.06);">${escapeHtml(p.title||"")}</td>
           <td style="padding:10px; border-top:1px solid rgba(255,255,255,.06);">${escapeHtml(p.status||"")}</td>
           <td style="padding:10px; border-top:1px solid rgba(255,255,255,.06); text-align:right;">${escapeHtml(p.plannedHours||"")}</td>
+          <td style="padding:10px; border-top:1px solid rgba(255,255,255,.06); text-align:right;">
+            <button class="btn small bad" type="button" data-del="${p.id}" title="Kunde löschen">🗑</button>
+          </td>
         </tr>`;
       }
     }
@@ -1215,6 +1219,25 @@ function currentProject() {
         showCustomerEdit();
       });
     });
+
+    // delete button in list
+    projOverview.querySelectorAll("button[data-del]").forEach(btn=>{
+      btn.addEventListener("click", (ev)=>{
+        try{ ev.stopPropagation(); }catch(_){}
+        const pid = btn.getAttribute("data-del");
+        const p = (state.projects||[]).find(x=>x.id===pid);
+        if(!p) return;
+        if(!confirm(`Kunde wirklich löschen?\n\n${p.title}`)) return;
+        state.projects = (state.projects||[]).filter(x=>x.id!==pid);
+        if(state.selectedProjectId===pid){
+          state.selectedProjectId = (state.projects[0] && state.projects[0].id) ? state.projects[0].id : null;
+        }
+        save(); refreshAll();
+        if(!state.selectedProjectId) showCustomerList();
+        toast("Gelöscht");
+      });
+    });
+
 
     // also filter dropdown options
     const ps = el("projSel");
@@ -3261,70 +3284,141 @@ let privacyStripM_total = 0;
     p.chef.materials=[]; save(); renderMaterials(); refreshChefPill();
   });
 
-  function renderMaterials(){
-    const p=currentProject(); if(!p) return;
-    const list=p.chef.materials||[];
-    const view = sortMaterials(list);
-    matPill.textContent=String(list.length);
-    if(!view.length){
-      matList.innerHTML='<div class="hint">(noch leer)</div>';
+function renderMaterials(){
+  const p=currentProject(); if(!p) return;
+  const list=p.chef.materials||[];
+  const view = sortMaterials(list);
+  matPill.textContent=String(list.length);
+
+  if(!view.length){
+    matList.innerHTML='<div class="hint">(noch leer)</div>';
+    return;
+  }
+
+  // Gruppiert nach Zaun-Variante (System + Höhe + Farbe) als Dropdowns
+  function parseVariant(name){
+    const s = String(name||"");
+    const sys =
+      (/Doppelstab/i.test(s) ? "Doppelstab" :
+      (/\bWPC\b/i.test(s) ? "WPC" :
+      (/\bHolz\b/i.test(s) ? "Holz" :
+      (/Alu|Aluminium/i.test(s) ? "Aluminium" :
+      (/Tornado/i.test(s) ? "Tornado" :
+      (/Diagonal/i.test(s) ? "Diagonal" :
+      (/Elektro/i.test(s) ? "Elektrozaun" : "")))))));
+
+    const hm = s.match(/(\d{2,3})\s*cm\b/i);
+    const height = hm ? Number(hm[1]) : null;
+
+    let color = "";
+    try{
+      const parts = s.split("•").map(x=>x.trim()).filter(Boolean);
+      // entferne Höhen/Element-Länge
+      const keep = parts.filter(x=>!/(\d{2,3})\s*cm\b/i.test(x) && !/2[,\.]?50m/i.test(x));
+      if(keep.length){
+        const cand = keep[keep.length-1];
+        if(/RAL|Anthrazit|Moosgrün|Schwarz|Weiß|Grau|verzinkt|Natur|Holz|WPC|DB\s*703/i.test(cand)){
+          color = cand;
+        }
+      }
+    }catch(_){ }
+
+    if(!sys || !height){
+      return { key:"Sonstiges", label:"Sonstiges" };
+    }
+    const label = `${sys} • ${height} cm${color?(" • "+color):""}`;
+    const key = `${sys}__${height}__${color||""}`;
+    return { key, label, sys, height, color };
+  }
+
+  const groups = new Map();
+  for(const it of view){
+    const v = parseVariant(it.name);
+    if(!groups.has(v.key)) groups.set(v.key, {label:v.label, items:[]});
+    groups.get(v.key).items.push(it);
+  }
+
+  const entries = Array.from(groups.entries());
+  entries.sort((a,b)=>{
+    if(a[0]==="Sonstiges") return 1;
+    if(b[0]==="Sonstiges") return -1;
+    const pa = a[0].split("__");
+    const pb = b[0].split("__");
+    const sa = pa[0]||"", sb = pb[0]||"";
+    if(sa!==sb) return sa.localeCompare(sb,"de",{sensitivity:"base"});
+    const ha = Number(pa[1]||0), hb = Number(pb[1]||0);
+    if(ha!==hb) return ha-hb;
+    const ca = pa.slice(2).join("__"), cb = pb.slice(2).join("__");
+    return ca.localeCompare(cb,"de",{sensitivity:"base"});
+  });
+
+  matList.innerHTML = entries.map((e,idx)=>{
+    const key = e[0];
+    const g = e[1];
+    const open = (idx===0) ? "open" : "";
+    const safeKey = encodeURIComponent(key);
+    return `
+      <details ${open}>
+        <summary>
+          <span>${escapeHtml(g.label||"Material")}</span>
+          <span class="pill">${g.items.length}</span>
+        </summary>
+        <div class="matRows" data-g="${safeKey}"></div>
+      </details>
+    `;
+  }).join("");
+
+  function bindRow(rows, it){
+    const row=document.createElement("div");
+    row.className="matRow";
+    row.innerHTML = `
+      <div class="matName">${escapeHtml(it.name||"")}</div>
+      <input type="text" inputmode="decimal" value="${escapeHtml(String(it.qty??""))}" />
+      <select>
+        <option${it.unit==="Stk"?" selected":""}>Stk</option>
+        <option${it.unit==="m"?" selected":""}>m</option>
+        <option${it.unit==="m²"?" selected":""}>m²</option>
+        <option${it.unit==="Sack"?" selected":""}>Sack</option>
+        <option${it.unit==="m³"?" selected":""}>m³</option>
+        <option${it.unit==="Paket"?" selected":""}>Paket</option>
+      </select>
+      <button class="btn small bad" type="button" title="löschen">✕</button>
+    `;
+    const inpQty=row.querySelector("input");
+    const selUnit=row.querySelector("select");
+    const btnDel=row.querySelector("button");
+
+    // iOS/PWA Safety: falls DOM anders gerendert wurde, nicht crashen
+    if(!inpQty || !selUnit || !btnDel){
+      rows.appendChild(row);
       return;
     }
 
-    matList.innerHTML = `
-      <details open>
-        <summary>
-          <span>Materialliste</span>
-          <span class="pill">${view.length}</span>
-        </summary>
-        <div class="matRows"></div>
-      </details>
-    `;
-    const rows = matList.querySelector(".matRows");
-    view.forEach(it=>{
-      const row=document.createElement("div");
-      row.className="matRow";
-      row.innerHTML = `
-        <div class="matName">${escapeHtml(it.name)}</div>
-        <input type="text" inputmode="decimal" value="${escapeHtml(String(it.qty??""))}" />
-        <select>
-          <option${it.unit==="Stk"?" selected":""}>Stk</option>
-          <option${it.unit==="m"?" selected":""}>m</option>
-          <option${it.unit==="m²"?" selected":""}>m²</option>
-          <option${it.unit==="Sack"?" selected":""}>Sack</option>
-          <option${it.unit==="m³"?" selected":""}>m³</option>
-          <option${it.unit==="Paket"?" selected":""}>Paket</option>
-        </select>
-        <button class="btn small bad" type="button" title="löschen">✕</button>
-      `;
-      const inpQty=row.querySelector("input");
-      const selUnit=row.querySelector("select");
-      const btnDel=row.querySelector("button");
-
-      // iOS/PWA Safety: falls DOM anders gerendert wurde, nicht crashen
-      if(!inpQty || !selUnit || !btnDel){
-        rows.appendChild(row);
-        return;
-      }
-
-      const commit=()=>{
-        const p2=currentProject(); if(!p2) return;
-        const tgt=(p2.chef.materials||[]).find(x=>x.id===it.id); if(!tgt) return;
-        tgt.qty = toNum(inpQty.value,0);
-        tgt.unit = selUnit.value;
-        tgt.override = true;
-        save(); refreshChefPill();
-      };
-      inpQty.addEventListener("change", commit);
-      selUnit.addEventListener("change", commit);
-      btnDel.addEventListener("click", ()=>{
-        const p2=currentProject(); if(!p2) return;
-        p2.chef.materials=(p2.chef.materials||[]).filter(x=>x.id!==it.id);
-        save(); renderMaterials(); refreshChefPill();
-      });
-      rows.appendChild(row);
+    const commit=()=>{
+      const p2=currentProject(); if(!p2) return;
+      const tgt=(p2.chef.materials||[]).find(x=>x.id===it.id); if(!tgt) return;
+      tgt.qty = toNum(inpQty.value,0);
+      tgt.unit = selUnit.value;
+      tgt.override = true;
+      save(); refreshChefPill();
+    };
+    inpQty.addEventListener("change", commit);
+    selUnit.addEventListener("change", commit);
+    btnDel.addEventListener("click", ()=>{
+      const p2=currentProject(); if(!p2) return;
+      p2.chef.materials=(p2.chef.materials||[]).filter(x=>x.id!==it.id);
+      save(); renderMaterials(); refreshChefPill();
     });
+    rows.appendChild(row);
   }
+
+  // Fill groups
+  for(const [key,g] of entries){
+    const rows = matList.querySelector(`.matRows[data-g="${encodeURIComponent(key)}"]`);
+    if(!rows) continue;
+    g.items.forEach(it=>bindRow(rows,it));
+  }
+}
 
   function compressImageToDataUrl(file, maxSide=1280, quality=0.72){
     return new Promise((resolve,reject)=>{
