@@ -45,12 +45,20 @@ let gateUiIdx=0; let gateCollapsed=false;
 
   // Katalog / Herstellerdaten ausgelagert (siehe ./src/catalog.js)
   const __CAT = (window.ZS_CATALOG || {});
-  const ZAUNTEAM_FARBEN = __CAT.ZAUNTEAM_FARBEN;
-  const COLOR_BY_SYSTEM = __CAT.COLOR_BY_SYSTEM;
-  const ALU_BRANDS = __CAT.ALU_BRANDS;
-  const ALU_FIELD_WIDTH_PRESETS_CM = __CAT.ALU_FIELD_WIDTH_PRESETS_CM;
-  if(!ZAUNTEAM_FARBEN || !COLOR_BY_SYSTEM || !ALU_BRANDS){
-    console.warn('[Zaunplaner] Katalog nicht geladen – prüfe Reihenfolge der Script-Tags.');
+  // Safe Defaults: App darf niemals crashen, wenn catalog.js (noch) nicht geladen ist (Cache/Update/iOS).
+  const ZAUNTEAM_FARBEN = Array.isArray(__CAT.ZAUNTEAM_FARBEN) ? __CAT.ZAUNTEAM_FARBEN : [
+    "Moosgrün (RAL 6005)",
+    "Anthrazit (RAL 7016)",
+    "Schwarz (RAL 9005)",
+    "Feuerverzinkt / Silber",
+    "Weiß (RAL 9016)"
+  ];
+  const COLOR_BY_SYSTEM = (__CAT.COLOR_BY_SYSTEM && typeof __CAT.COLOR_BY_SYSTEM === "object") ? __CAT.COLOR_BY_SYSTEM : {};
+  const ALU_BRANDS = (__CAT.ALU_BRANDS && typeof __CAT.ALU_BRANDS === "object") ? __CAT.ALU_BRANDS : {};
+  const ALU_FIELD_WIDTH_PRESETS_CM = Array.isArray(__CAT.ALU_FIELD_WIDTH_PRESETS_CM) ? __CAT.ALU_FIELD_WIDTH_PRESETS_CM : [100,120,150,160,178,180,200,250];
+
+  if(!window.ZS_CATALOG){
+    console.warn("[Zaunplaner] Katalog (src/catalog.js) nicht geladen – starte mit Defaults.");
   }
 
 
@@ -164,7 +172,7 @@ let gateUiIdx=0; let gateCollapsed=false;
   };
   const colorsForSystem = (sys) => {
     const k = normSystem(sys);
-    return COLOR_BY_SYSTEM[k] || ZAUNTEAM_FARBEN;
+    return (COLOR_BY_SYSTEM && COLOR_BY_SYSTEM[k]) ? COLOR_BY_SYSTEM[k] : ZAUNTEAM_FARBEN;
   };
 
   // Aluminium (Aluninium) — Hersteller-Auswahl (Lamellen/Pfosten/Farben je Hersteller)
@@ -637,7 +645,7 @@ function escapeHtml(s) {
     return String(s||"").replace(/[&<>"]/g, c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
   }
 
-  const APP_VERSION = "1.4.52";
+  const APP_VERSION = "1.4.53";
   const APP_BUILD = "2025-12-22";
   const APP_NAME = "Zaunteam Zaunplaner";
 
