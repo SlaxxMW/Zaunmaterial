@@ -1,0 +1,659 @@
+<!doctype html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+  <title>Zaunteam Zaunplaner</title>
+
+  <!-- PWA -->
+  <link rel="manifest" href="./manifest.webmanifest">
+  <meta name="theme-color" content="#e6e6e6">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <link rel="apple-touch-icon" href="./icon-192.png">
+
+    <link rel="stylesheet" href="./styles.css?v=1.4.53">
+
+</head>
+
+<body>
+  <div class="wrap">
+    <div class="topbar">
+      <div class="toprow">
+        <div class="row">
+          <div class="brand">Zaunteam Zaunplaner <small id="verPill" class="pill accent">v—</small></div>
+          <span class="pill" id="statusPill">kein Projekt</span>
+          <span class="pill" id="savePill">gespeichert: —</span>
+          <span class="pill" id="backupPill">Backup: —</span>
+          <span class="pill" id="projCountPill">0</span>
+        </div>
+        <div class="row">
+          <button class="btn" id="btnBackup" type="button" title="Erzeugt eine Sicherungsdatei mit allen Kunden & Daten">💾 Speichern (Datei)</button>
+          <button class="btn small" id="btnDemo" type="button">Demo</button>
+      <button id="btnImportJson" class="btn" type="button" title="Lädt eine Sicherungsdatei (JSON) wieder ein">📂 Laden (Datei)</button>
+      <input id="fileImportJson" type="file" accept="application/json,.json" style="display:none" />
+          <button class="btn small" id="btnCSV" type="button">Material CSV</button>
+          <button id="btnUpdate" class="btn" type="button">Update prüfen</button>
+      <button class="btn small bad" id="btnReset" type="button">Reset</button>
+        </div>
+      </div>
+
+      <div class="tabs">
+        <button class="tabBtn active" data-tab="kunde" type="button">👤 Kunde / Projekt</button>
+        <button class="tabBtn" data-tab="chef" type="button">🛠️ Chef/Team</button>
+        <button class="tabBtn" data-tab="settings" type="button">⚙️ Einstellungen</button>
+      </div>
+    </div>
+
+    <!-- KUNDE/PROJEKT (vereint) -->
+    <section class="panel tab" data-tab="kunde">
+      <div class="cardTitle">
+        <h2>👤 Kunden</h2>
+        <span class="pill" id="projCountPill">0</span>
+      </div>
+
+      <!-- LIST VIEW -->
+      <div id="kundenListView">
+        <div class="card">
+        <div class="row" style="margin-top:6px;">
+          <div style="flex:1;">
+            <label>Suche Kunde</label>
+            <input id="projSearch" placeholder="z.B. Müller, Musterstraße…" />
+          </div>
+        </div>
+
+        <details id="projOverviewDetails" style="margin-top:10px;">
+          <summary style="cursor:pointer; user-select:none;">📋 Projektübersicht (Status / Stunden)</summary>
+          <div id="projOverview" style="margin-top:8px;"></div>
+        </details>
+
+          <div class="row">
+            <div style="flex:1;">
+              <label>Kunde auswählen</label>
+              <select id="projSel"></select>
+            </div>
+            <div style="display:flex; gap:8px; align-items:flex-end;">
+              <button id="btnOpenCustomer" class="btn green" type="button">Öffnen</button>
+              <button id="btnAdd" class="btn dark" type="button">+ Neuer Kunde</button>
+            </div>
+          </div>
+
+          <div class="row" style="margin-top:10px;">
+            <div style="flex:1;">
+              <label>Kundenname (für Neu)</label>
+              <input id="pName" placeholder="Neuer Kunde" />
+            </div>
+          </div>
+
+          <details style="margin-top:10px;">
+            <summary style="cursor:pointer; font-weight:900;">Optionale Basisdaten (bei Neu)</summary>
+            <div class="row" style="margin-top:10px;">
+              <div style="flex:1;">
+                <label>Erstellt (optional)</label>
+                <input id="pCreated" type="date" />
+              </div>
+              <div style="flex:1;">
+                <label>Ausführung (optional)</label>
+                <input id="pDate" type="date" />
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <div style="flex:1;">
+                <label>Telefon (optional)</label>
+                <input id="pPhone" placeholder="+49..." />
+              </div>
+              <div style="flex:1;">
+                <label>E‑Mail (optional)</label>
+                <input id="pEmail" placeholder="mail@..." />
+              </div>
+            </div>
+            <div class="row" style="margin-top:10px;">
+              <div style="flex:1;">
+                <label>Adresse Kunde (optional)</label>
+                <input id="pAddr" placeholder="Straße, PLZ Ort" />
+              </div>
+              <div style="flex:1;">
+                <label>Objektadresse (optional)</label>
+                <input id="pObj" placeholder="falls abweichend" />
+              </div>
+            </div>
+          </details>
+
+          <div class="hint" style="margin-top:10px;">
+            Tipp: Wähle einen Kunden im Dropdown → „Öffnen“. Im Bearbeiten‑Modus wird automatisch gespeichert.
+          </div>
+        </div>
+
+        <div id="projCards" style="display:none;"></div>
+      </div>
+
+      <!-- EDIT VIEW -->
+      <div id="kundenEditView" style="display:none;">
+        <div class="row" style="margin-bottom:10px;">
+          <button id="btnBackToList" class="btn blue" type="button">← Zurück zur Kundenliste</button>
+        </div>
+
+
+      <div class="cardTitle">
+        <h2 id="kundeTitle">👤 Kunde</h2>
+        <span class="pill" id="kundePill">leer</span>
+      </div>
+      <div id="kundeKpi" class="row" style="margin-top:8px;"></div>
+      <div class="card" style="margin-top:10px;">
+        <div class="cardTitle"><h3>🏠 Adresse Kunde</h3></div>
+        <div class="grid3">
+          <div style="grid-column: span 2;">
+            <label>Straße / Hausnr.</label>
+            <input id="kStreet" placeholder="z.B. Hauptstraße 12" />
+          </div>
+          <div>
+            <label>PLZ</label>
+            <input id="kZip" inputmode="numeric" placeholder="z.B. 10115" />
+            <div class="hint">Ort wird online automatisch ergänzt (sonst manuell).</div>
+          </div>
+          <div style="grid-column: span 2;">
+            <label>Ort</label>
+            <input id="kCity" placeholder="z.B. Berlin" />
+          </div>
+          <div>
+            <label>Land (optional)</label>
+            <input id="kCountry" placeholder="DE" />
+          </div>
+        </div>
+        <div class="row" style="margin-top:8px;">
+          <div style="flex:1;">
+            <label>Objektadresse / Baustelle (optional)</label>
+            <input id="kObjAddr" placeholder="falls abweichend" />
+          </div>
+        </div>
+        <div class="hint" id="addrBar" style="margin-top:8px;">Adresse: —</div>
+      </div>
+
+
+      <div class="grid3">
+        
+        <div>
+          <label>Erstellt</label>
+          <input id="kCreated" type="date" />
+        </div>
+        <div>
+          <label>Ausführung</label>
+          <input id="kPlanned" type="date" />
+        </div>
+        <div>
+          <label>Telefon</label>
+          <input id="kPhone" inputmode="tel" />
+        </div>
+      </div>
+
+      <div class="cardTitle" style="margin-top:8px;"><h3>📇 Kontakt</h3></div>
+      <div class="grid2">
+        <div>
+          <label>E‑Mail</label>
+          <input id="kEmail" inputmode="email" />
+        </div>
+        <div style="opacity:.65; font-size:12px; padding-top:26px;">Zaun wird über Abschnitte erfasst (A, B, C…)</div>
+      </div>
+      <input id="kLen" type="hidden" />
+
+      <div id="customerFenceGlobalsTop" style="display:none;">
+  <div class="grid3">
+    <div>
+      <label>Höhe</label>
+      <select id="kHeight"></select>
+    </div>
+    <div>
+      <label>System</label>
+      <select id="kSystem">
+        <option>Doppelstab</option>
+        <option>Holz</option>
+        <option>WPC</option>
+        <option>Aluminium</option>
+        <option>Diagonalgeflecht</option>
+        <option>Tornado</option>
+        <option>Elektrozaun</option>
+      </select>
+    </div>
+    <div>
+      <label>Farbe</label>
+      <select id="kColor"></select>
+    </div>
+  </div>
+</div>
+
+<div id="customerFenceGlobalsBottom" style="display:none;">
+  <div class="grid2">
+    <div>
+      <label>Holzart</label>
+      <select id="kWood"></select>
+    </div>
+    <div>
+      <label>WPC Variante</label>
+      <select id="kWpc"></select>
+    </div>
+  </div>
+</div>
+
+<div class="grid3" style="margin-top:10px;">
+  <div>
+    <label>Gefälle</label>
+    <select id="kSlopeType">
+      <option value="flat">kein</option>
+      <option value="pct">%</option>
+    </select>
+  </div>
+
+  <div class="card fullBleed" style="margin-top:0; grid-column:1 / -1;">
+    <div class="cardTitle">
+      <h3>🧩 Zaunabschnitte (A, B, C…)</h3>
+      <span class="pill">unterschiedliche Höhen & Systeme</span>
+    </div>
+
+    <div class="row" style="margin-top:8px; gap:8px; align-items:flex-end;">
+      <div style="flex:0 0 140px;">
+        <label>Neu</label>
+        <select id="segAddLabel"></select>
+      </div>
+      <button id="btnSegAdd" class="btn green" type="button">+ Abschnitt</button>
+      <button id="btnSegCollapseAll" class="btn" type="button">Alle schließen</button>
+      <button id="btnSegExpandAll" class="btn" type="button">Alle öffnen</button>
+    </div>
+
+    <div id="segList" style="margin-top:10px;"></div>
+
+    <div class="hint" style="margin-top:10px;">
+      Tipp: Länge je Abschnitt eintragen. Gesamtlänge wird automatisch summiert.
+    </div>
+  </div>
+
+  <div>
+    <label>Gefälle %</label>
+    <input id="kSlopePct" inputmode="decimal" placeholder="z. B. 2,5" />
+  </div>
+</div>
+
+<!-- Eck-/Corner Eingabe außerhalb der Abschnitte (ausgeblendet, bleibt für Kompatibilität) -->
+<div style="display:none;">
+  <label>Ecken</label>
+  <div class="row">
+    <button class="btn small" id="kCornersMinus" type="button">−</button>
+    <input id="kCorners" inputmode="numeric" value="0" style="max-width:140px;" />
+    <button class="btn small" id="kCornersPlus" type="button">+</button>
+  </div>
+</div>
+
+<div class="grid2">
+        <div>
+          <label>Beton‑Modus</label>
+          <select id="kConcreteMode">
+            <option value="sacks">Sack (Auto)</option>
+            <option value="m3">m³ (Auto)</option>
+          </select>
+          <div class="hint" id="kConcreteAutoHint" style="margin-top:6px;"></div>
+        </div>
+        <div>
+          <label>Beton (Auto)</label>
+          <input id="kConcreteVal" />
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Sichtschutz?</label>
+          <select id="kPrivacy">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+        <div>
+          <label>Sichtschutz‑Länge (m)</label>
+          <input id="kPrivacyLen" inputmode="decimal" placeholder="leer = ganze Zaunlänge" />
+        </div>
+      </div>
+      <div class="grid2" id="privacyRollRow" style="margin-top:10px;">
+        <div>
+          <label>Rollen‑Länge</label>
+          <select id="kPrivacyRoll">
+            <option value="35">35 m</option>
+            <option value="50">50 m</option>
+          </select>
+        </div>
+        <div>
+          <label>Sichtschutz‑Rollen (Auto)</label>
+          <input id="kPrivacyRollsAuto" disabled />
+        </div>
+      </div>
+
+      <div class="card" style="margin-top:12px;">
+        <div class="grid2">
+          <div>
+            <label>Tor‑Typ</label>
+            <select id="kGateType">
+              <option value="none">kein Tor</option>
+              <option value="gate1">1‑flügelig</option>
+              <option value="gate2">2‑flügelig</option>
+              <option value="gate3">3‑flügelig</option>
+            </select>
+          </div>
+          <div class="row" style="align-self:end;">
+            <button class="btn small" id="btnGateAdd" type="button">+ Tor</button>
+            <button class="btn small bad" id="btnGateClear" type="button">Tore löschen</button>
+          </div>
+        </div>
+        <div id="gateVariants" class="hint" style="margin-top:10px;"></div>
+        <div id="gateRows" style="margin-top:10px;"></div>
+      </div>
+
+      <label>Kunden‑Notiz</label>
+      <textarea id="kNote" placeholder="Notizen…"></textarea>
+
+      
+</div>
+<div class="row" style="margin-top:10px;">
+<button class="btn blue" id="btnKDown" type="button">Kunden‑Text Download</button>
+        <button class="btn accent green" id="btnKWhats" type="button">WhatsApp Kunde</button>
+        <button class="btn orange" id="btnKCall" type="button">📞</button>
+        <button class="btn purple" id="btnKMail" type="button">✉️</button>
+      </div>
+    
+      </div>
+    </section>
+
+    <!-- CHEF / TEAM -->
+    <section class="panel tab" data-tab="chef" style="display:none;">
+      <div class="cardTitle">
+        <h2 id="chefTitle">🛠️ Chef / Team</h2>
+        <span class="pill" id="chefPill">leer</span>
+      </div>
+
+      <div class="grid3">
+        <div>
+          <label>Bagger</label>
+          <select id="cBagger">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+        <div>
+          <label>Ramme</label>
+          <select id="cRamme">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+        <div>
+          <label>Hänger</label>
+          <select id="cHaenger">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2">
+        <div>
+          <label>Handbohrgerät</label>
+          <select id="cHandbohr">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+        <div>
+          <label>Schubkarre</label>
+          <select id="cSchubkarre">
+            <option value="no">nein</option>
+            <option value="yes">ja</option>
+          </select>
+        </div>
+      </div>
+
+      <div class="grid2" style="margin-top:10px;">
+        <div>
+          <label>Geplante Stunden</label>
+          <input id="cHoursPlanned" inputmode="decimal" placeholder="z.B. 16" />
+        </div>
+        <div>
+          <label>Status (optional)</label>
+          <select id="cStatus">
+            <option value="draft">Entwurf</option>
+            <option value="planned">geplant</option>
+            <option value="inwork">in Arbeit</option>
+            <option value="done">fertig</option>
+          </select>
+        </div>
+      </div>
+
+      <label>Kunden‑Notiz (automatisch)</label>
+      <textarea id="cCustomerNote" readonly placeholder="(wird aus dem Kunden‑Tab übernommen)"></textarea>
+
+      <label>Team‑Hinweise</label>
+      <textarea id="cNote" placeholder="z. B. Zufahrt, Besonderheiten…"></textarea>
+
+      <div class="card">
+        <div class="cardTitle">
+          <b>Interne Materialliste</b>
+          <span class="pill" id="matPill">0</span>
+        </div>
+
+        <div class="grid3" style="margin-top:10px;">
+          <div>
+            <label>Material</label>
+            <select id="mName">
+              <optgroup label="Matten / Elemente">
+                <option>Doppelstabmatte</option>
+                <option>Diagonalgeflecht</option>
+                <option>Tornado</option>
+                <option>Elektrozaun</option>
+              </optgroup>
+              <optgroup label="Pfosten">
+                <option>Pfosten</option>
+                <option>Eckpfosten</option>
+              </optgroup>
+              <optgroup label="Leisten / Zubehör">
+                <option>U-Leiste</option>
+                <option>Torleiste</option>
+                <option>Abdeckkappe</option>
+              </optgroup>
+              <optgroup label="Beton">
+                <option>Beton (Sack)</option>
+                <option>Fertigbeton (m³)</option>
+              </optgroup>
+              <optgroup label="Sonstiges">
+                <option value="__custom__">Sonstiges (Freitext)…</option>
+              </optgroup>
+            </select>
+            <input id="mNameCustom" placeholder="Material frei eingeben…" style="display:none; margin-top:8px;" />
+          </div>
+          <div>
+            <label>Menge</label>
+            <input id="mQty" inputmode="decimal" />
+          </div>
+          <div>
+            <label>Einheit</label>
+            <select id="mUnit">
+              <option>Stk</option>
+              <option>m</option>
+              <option>m²</option>
+              <option>Sack</option>
+              <option>m³</option>
+              <option>Paket</option>
+            </select>
+          </div>
+        </div>
+<div class="row" style="margin-top:10px;">
+          <button class="btn good" id="btnAddMat" type="button">+ hinzufügen</button>
+          <button class="btn bad" id="btnClearMat" type="button">Liste leeren</button>
+        </div>
+
+        <div id="matList" style="margin-top:10px;"></div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle">
+          <b>Fotos</b>
+          <span class="pill" id="photoPill">0</span>
+        </div>
+        <div class="hint" style="margin:8px 0 10px;">
+          Desktop‑WhatsApp kann Fotos nicht automatisch anhängen → nutze „Fotos.zip“.
+        </div>
+        <div id="photoGrid"></div>
+      </div>
+
+      <div class="row" style="margin-top:10px;">
+        <button class="btn accent green" id="btnCWhatsText" type="button">Intern Text</button>
+        <button class="btn accent green" id="btnCWhatsFotos" type="button">Intern Fotos</button>
+        <button class="btn accent green" id="btnCWhats" type="button">Intern Alles</button>
+        <button class="btn accent" id="btnCMaps" type="button">📍 Maps</button>
+        <button class="btn blue" id="btnCDown" type="button">Intern‑Text Download</button>
+        <button class="btn blue" id="btnCZip" type="button">Fotos.zip</button>
+        <button class="btn purple" id="btnCMail" type="button">E‑Mail (Text)</button>
+      </div>
+    </section>
+
+    <!-- SETTINGS -->
+    <section class="panel tab" data-tab="settings" style="display:none;">
+      <h2>⚙️ Einstellungen & Backup</h2>
+
+      <div class="card">
+        <div class="cardTitle">
+          <b>Speicher‑Status</b>
+          <span class="pill" id="storagePill">—</span>
+        </div>
+        <div id="storageStatusBox" class="hint" style="margin-top:10px;"></div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn small" id="btnStorageSelfTest" type="button">🔧 Speicher testen</button>
+          <button class="btn small" id="btnExportLog" type="button">🧾 Log exportieren</button>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle"><b>Backup & Restore</b></div>
+        <div class="hint" style="margin-top:6px;">
+          Vollständig offline. Export passiert nur manuell. Import bietet <b>Merge</b> oder <b>Replace</b> + Report.
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn green" id="btnExportJSON" type="button">💾 JSON Backup</button>
+          <button class="btn" id="btnImportJSON2" type="button">📂 JSON importieren</button>
+          <button class="btn blue" id="btnExportCSVProjects" type="button">📄 CSV Kunden</button>
+          <button class="btn blue" id="btnExportCSVAllMaterials" type="button">📄 CSV Gesamt‑Material</button>
+          <button class="btn purple" id="btnExportPDF" type="button">🖨️ PDF Report (Druck)</button>
+        </div>
+        <div class="hint" style="margin-top:8px;">
+          Mobile: Wenn möglich öffnet sich direkt das Teilen‑Menü. Dateiname enthält Datum/Uhrzeit.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle"><b>Export‑Optionen</b></div>
+        <div class="grid2" style="margin-top:10px;">
+          <div>
+            <label><input id="setShareOnExport" type="checkbox" style="width:auto; margin-right:8px;" />Beim Export Teilen‑Menü nutzen (wenn verfügbar)</label>
+            <div class="hint">Empfohlen für iPhone/Android. Fallback ist normaler Download.</div>
+          </div>
+          <div>
+            <label><input id="setAutoBackupHint" type="checkbox" style="width:auto; margin-right:8px;" disabled />Erinnerung „Backup machen“ (später)</label>
+            <div class="hint">Vorbereitet – ohne Zwang & ohne Benachrichtigungen (noch deaktiviert).</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle"><b>Datenschutz</b></div>
+        <div class="hint" style="margin-top:6px;">
+          <b>Keine Accounts, kein Tracking, keine Werbung.</b><br>
+          Alle Daten bleiben lokal auf deinem Gerät (Browser‑Speicher).<br>
+          Export/Teilen passiert nur, wenn du aktiv auf „Export“ klickst.
+        </div>
+      </div>
+
+      <div class="card">
+        <div class="cardTitle"><b>Support</b></div>
+        <div class="grid2" style="margin-top:10px;">
+          <div>
+            <label>Kontakt‑Mail</label>
+            <input id="setSupportEmail" placeholder="z.B. info@deinbetrieb.de" />
+          </div>
+          <div>
+            <label>App‑Info</label>
+            <div id="supportInfo" class="hint" style="margin-top:6px;"></div>
+          </div>
+        </div>
+        <div class="row" style="margin-top:10px;">
+          <button class="btn small" id="btnSupportMail" type="button">✉️ Support‑Mail öffnen</button>
+        </div>
+      </div>
+    </section>
+
+  </div>
+
+  <div id="updateBar" style="display:none; margin-top:10px;" class="card">
+    <div class="row" style="align-items:center; justify-content:space-between;">
+      <div style="font-weight:900;">🔄 Update verfügbar – jetzt neu laden?</div>
+      <button id="btnUpdateNow" class="btn green" type="button">Jetzt aktualisieren</button>
+    </div>
+    <div class="hint" style="margin-top:8px;">Hinweis: Deine Kunden bleiben erhalten.</div>
+  </div>
+
+  <div id="modalHost" class="modalHost"><div class="modalCard" id="modalCard"></div></div>
+
+  <div id="toast"></div>
+
+  <datalist id="gateWidthList">
+    <option value="80"></option>
+    <option value="100"></option>
+    <option value="125"></option>
+    <option value="150"></option>
+    <option value="200"></option>
+  </datalist>
+
+  <script src="./src/catalog.js?v=1.4.53" defer></script>
+  <script src="./app.js?v=1.4.53" defer></script>
+  <!-- PWA Service Worker (Auto-Update, offline-ready) -->
+  <script>
+    (function(){
+      const VER = "1.4.53";
+      if (!('serviceWorker' in navigator)) return;
+      window.addEventListener('load', async () => {
+        const updateBar = document.getElementById('updateBar');
+        const btnUpdateNow = document.getElementById('btnUpdateNow');
+        const showUpdate = () => { if(updateBar) updateBar.style.display = 'block'; };
+        try{
+          // Cleanup: alte Versionen raus
+          try{
+            const regs = await navigator.serviceWorker.getRegistrations();
+            for(const r of regs){
+              const u = (r && r.active && r.active.scriptURL) ? r.active.scriptURL : '';
+              if(u.includes('sw.js?v=') && !u.includes('sw.js?v='+VER)) await r.unregister();
+            }
+          }catch(_){ }
+
+          const reg = await navigator.serviceWorker.register('./sw.js?v='+VER, { updateViaCache: 'none' });
+          const doUpdate = () => reg && reg.update().catch(()=>{});
+          doUpdate();
+          setInterval(doUpdate, 10*60*1000);
+
+          if(reg.waiting) showUpdate();
+          reg.addEventListener('updatefound', () => {
+            const sw = reg.installing;
+            if(!sw) return;
+            sw.addEventListener('statechange', () => {
+              if(sw.state==='installed' && navigator.serviceWorker.controller) showUpdate();
+            });
+          });
+
+          if(btnUpdateNow){
+            btnUpdateNow.addEventListener('click', () => {
+              try{ if(reg.waiting) reg.waiting.postMessage({type:'SKIP_WAITING'}); }catch(_){ }
+              setTimeout(()=>location.reload(), 200);
+            });
+          }
+
+          navigator.serviceWorker.addEventListener('controllerchange', () => location.reload());
+        }catch(e){
+          console.warn('SW register failed', e);
+        }
+      });
+    })();
+  </script>
+</body>
+</html>
